@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "interp-rocket"
+version: 0.1.0
+date-released: 2026-03-18
+authors:
+  - family-names: Laubach
+    given-names: Mark
+    orcid: "https://orcid.org/0000-0002-2403-4497"
+    affiliation: "American University, Department of Neuroscience"
+repository-code: "https://github.com/LaubachLab/i-rocket"
+license: BSD-3-Clause
+doi: 10.5281/zenodo.XXXXXXXXX
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.XXXXXXXXX
+    description: "Zenodo archive of v0.1.0"
