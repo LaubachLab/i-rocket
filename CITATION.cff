@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "interp-rocket"
 version: 0.1.0
-date-released: 2026-03-18
+date-released: 2026-03-16
 authors:
   - family-names: Laubach
     given-names: Mark
