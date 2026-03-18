@@ -1696,6 +1696,47 @@ def cv_feature_stability(
 
 
 # ============================================================================
+# SECTION 8B: FEATURE STABILITY SELECTION
+# ============================================================================
+
+def get_stable_features(stability, threshold=0.8):
+    """
+    Extract feature indices that appear in the top set in at least
+    `threshold` fraction of CV folds.
+
+    Parameters
+    ----------
+    stability : dict
+        Output from cv_feature_stability().
+    threshold : float, default=0.8
+        Minimum fraction of folds a feature must appear in.
+
+    Returns
+    -------
+    stable_features : ndarray of int
+        Feature indices meeting the threshold, sorted by frequency.
+    """
+    counts = stability['feature_counts']
+    n_folds = stability['n_folds_total']
+    mask = counts >= threshold * n_folds
+
+    indices = np.where(mask)[0]
+    order = np.argsort(-counts[indices])
+    stable_features = indices[order]
+
+    print(f"Stable features (≥{threshold:.0%} of {n_folds} folds): "
+          f"{len(stable_features)}")
+    return stable_features
+
+
+# Note: Class-mean visualization functions (plot_class_mean_activation,
+# plot_multi_kernel_summary, plot_aggregate_activation) are specific to
+# classification and are available in interp_rocket.py only. For
+# regression, target-conditional analysis would require binning the
+# continuous target, which is application-specific.
+
+
+# ============================================================================
 # SECTION 9: CONVENIENCE / DEMO
 # ============================================================================
 

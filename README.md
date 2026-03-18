@@ -1,16 +1,12 @@
 # I-ROCKET
 
-[![License: BSD-3](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
-[![tests](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml/badge.svg)](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19055359.svg)](https://doi.org/10.5281/zenodo.19055359)
-
 **Interpretable ROCKET: An Analysis Framework for Convolutional Time Series Classification**
 
 **interp_rocket** is a standalone, single-file Python implementation of the MultiRocket algorithm (Tan et al., 2022) with a complete interpretability and analysis framework. Beyond classification, it provides kernel-level feature decoding, recursive feature elimination with principled knee detection, temporal activation and occlusion mapping, information-theoretic feature decomposition, cross-validation stability analysis, confusion-conditioned diagnostics, and receptive field visualization of the classifier's feature set. A companion module provides time series regression via the same interpretable transform. Inspired by the transparent parameter storage in ms_rocket (O'Toole, 2023), interp_rocket follows the same workflow (generate kernels, convolve the training data, extract pooled features, train a linear classifier) while exposing every intermediate parameter for inspection and analysis.
 
 ## Motivation
 
-The ROCKET family of classifiers provides highly accurate time series classification with minimal computational cost. However, standard implementations in `sktime` and `aeon` wrap the fitted parameters and transformations inside compiled functions to maximize execution speed. While efficient, this creates an opaque model. For researchers analyzing temporal data, it is often critical to understand *why* a classification was made, and which specific temporal epochs, convolutional patterns, or summary statistics drive the separation between classes.
+The ROCKET family of classifiers provides highly accurate time series classification with minimal computational cost. However, standard implementations in `sktime` and `aeon` wrap the fitted parameters and transformations inside compiled functions to maximize execution speed. While efficient, this creates an opaque model. For researchers analyzing temporal data, it is often critical to understand *why* a classification was made—which specific temporal epochs, convolutional patterns, or summary statistics drive the separation between classes.
 
 I-ROCKET was designed to answer these questions. It maintains algorithmic fidelity to MultiRocket but stores all kernel weights, dilations, biases, and pooling operators in documented NumPy arrays, enabling complete feature traceability from classifier decision back to temporal pattern.
 
@@ -26,7 +22,7 @@ MultiRocket uses 84 deterministic convolutional kernels of length 9, inherited f
 
 ### Classification and Feature Traceability
 
-* **Complete Feature Decoding:** Map any feature to its generating kernel, dilation, bias, pooling operator, and signal representation.
+* **Complete Feature Decoding:** Map any feature to its generating kernel, dilation, bias, pooling operator, and signal representation. No other ROCKET implementation exposes this.
 * **Scikit-Learn Compatible:** Standard `fit()`, `transform()`, `predict()`, and `score()` interface.
 * **Unbalanced Data Support:** Built-in minority class oversampling (`class_weight='balanced'`) and comprehensive scoring (macro/weighted F1, Matthews correlation coefficient, balanced accuracy, mutual information).
 * **Multichannel Support:** Fit separate models per channel and concatenate features for multi-electrode, multi-sensor, or multi-region analysis.
@@ -39,18 +35,17 @@ MultiRocket uses 84 deterministic convolutional kernels of length 9, inherited f
 
 * **Differential Activation Maps:** Per-class activation rates and max–min differences revealing where kernels discriminate, not just where they fire.
 * **Temporal Importance Mapping:** Identify which time regions drive classification overall and where classes temporally diverge.
-* **Class-Mean Kernel Activation:** Apply decoded kernels to class-averaged signals to visualize what each kernel detects without trial-to-trial noise.
 * **Receptive Field Diagram:** Visualize the temporal footprint and scale of each feature, positioned at the location of peak discriminative activation, colored by pooling operator, overlaid on class means.
 * **Temporal Occlusion Sensitivity:** Model-agnostic sliding-window perturbations measuring changes in the decision function.
-* A demonstration notebook compares features from I-ROCKET with those from a classic wavelet-based method, discriminant pursuit (Buckheit and Donoho, 1995), as implemented in a Python package by the author of this package (https://github.com/LaubachLab/discriminant-pursuit; https://doi.org/10.5281/zenodo.18983376).
+* **Class-Mean Kernel Activation:** Apply decoded kernels to class-averaged signals to visualize what each kernel detects without trial-to-trial noise.
 
 ### Feature Selection and Diagnostics
 
+* **Cross-Validation Feature Stability:** Track which features are consistently important across CV folds versus fold-specific, assessing interpretability robustness.
 * **Recursive Feature Elimination:** Isolate the minimal feature set for peak accuracy, with re-ranking at each step (Guyon et al., 2002; Uribarri et al., 2024). Two knee detection methods: threshold (within 1% of peak) and Kneedle algorithm (Satopaa et al., 2011).
 * **Information Decomposition:** Classify each feature's contribution as redundant, synergistic, or independent using partial information analysis adapted from neural ensemble methods (Narayanan, Kimchi, & Laubach, 2005).
 * **Kernel Similarity Network:** Correlation structure among features, revealing redundancy clusters and explaining why aggressive RFE preserves accuracy.
 * **Confusion-Conditioned Activation Maps:** Separate temporal profiles for correct and misclassified trials, revealing where and why the model fails.
-* **Cross-Validation Feature Stability:** Track which features are consistently important across CV folds versus fold-specific, assessing interpretability robustness.
 
 ### Evaluation
 
@@ -94,13 +89,12 @@ i-rocket/
     ├── demo_FordB.ipynb                    # Real-world engine noise with frequency structure (UCR FordB)
     ├── demo_three_bumps.ipynb              # Synthetic data used for package development
     ├── demo_RF_mapping.ipynb               # Receptive field localization with single-bump data
-    ├── demo_visualization.ipynb            # Comparison of temporal features from discriminant_pursuit and I-ROCKET
+    ├── demo_visualization.ipynb            # Comparison of temporal features from DP and I-ROCKET
     ├── demo_multivariate.ipynb             # Extension to multichannel data
     ├── demo_regression.ipynb               # Time series regression (FloodModeling1 from aeon)
     ├── three_bumps.py                      # Three-bumps generator (copy for notebook use)
-    ├── benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform dataset
-    ├── benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
-    └── benchmark_rfe_reproducibility.py    # RFE stability across random splits
+    ├── benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform
+    └── benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
 ```
 
 ## Quick Start
@@ -175,7 +169,35 @@ test_features = np.hstack([m.transform(X_test[:, ch, :])
 
 See `examples/demo_multivariate.ipynb` for a complete tutorial including per-channel importance analysis and cross-validation.
 
+## Feature Stability Selection (recommended)
+
+Stability-based feature selection identifies features that are consistently important across CV folds, providing a robust alternative to recursive feature elimination that is insensitive to random seed and train/test split ([Meinshausen & Bühlmann, 2010](https://doi.org/10.1111/j.1467-9868.2010.00740.x); [Saeys et al., 2008](https://doi.org/10.1007/978-3-540-87481-2_21)).
+
+```python
+from interp_rocket import (
+    InterpRocket, cv_feature_stability, plot_feature_stability,
+    get_stable_features,
+)
+
+# Fit model on all data for stability analysis
+model = InterpRocket(max_dilations_per_kernel=32, num_features=10000)
+model.fit(X, y)
+
+# Run cross-validation feature stability
+stability = cv_feature_stability(X, y, n_repeats=5, n_folds=5, n_top=50)
+fig = plot_feature_stability(stability, model=model)
+
+# Extract features present in ≥80% of folds
+stable_features = get_stable_features(stability, threshold=0.8)
+
+# Use stable features for all downstream analysis
+model.plot_top_kernels(X_test, y_test, feature_mask=stable_features)
+model.plot_temporal_importance(X_test, y_test, feature_mask=stable_features)
+```
+
 ## Recursive Feature Elimination
+
+RFE remains available for datasets where the accuracy curve provides a clear knee point. Note that RFE results can vary with random seed and data split; use `knee_method='both'` to compare threshold and Kneedle methods.
 
 ```python
 from interp_rocket import recursive_feature_elimination, plot_elimination_curve, plot_rfe_survivors
@@ -210,7 +232,7 @@ info = information_decomposition(
 fig = plot_information_decomposition(info)
 ```
 
-Features classified as **redundant** carry information already available from other features. **Synergistic** features only contribute when combined with others. **Independent** features carry unique information. This explains the structure of RFE: survivors should be predominantly independent and possibly synergistic.
+Features classified as **redundant** carry information already available from other features. **Synergistic** features only contribute when combined with others. **Independent** features carry unique information. This explains the structure of RFE: survivors should be predominantly independent and synergistic.
 
 ## Diagnostics
 
@@ -239,6 +261,30 @@ fig = plot_receptive_field_diagram(model, X_test, y_test, feature_mask=survivors
 # Temporal occlusion: model-agnostic perturbation analysis
 occ = temporal_occlusion(model, X_test, y_test, n_samples=6, feature_mask=survivors)
 plot_occlusion(occ)
+```
+
+## Class-Mean Visualization
+
+Apply decoded kernels to class-averaged signals to see what the classifier detects on the idealized waveform for each class:
+
+```python
+from interp_rocket import (
+    plot_class_mean_activation,
+    plot_multi_kernel_summary,
+    plot_aggregate_activation,
+)
+
+# Side-by-side activation map and convolution output for a single feature
+fig = plot_class_mean_activation(model, X_test, y_test,
+                                  feature_mask=stable_features, feature_rank=0)
+
+# Heatmap of all features firing across classes
+fig = plot_multi_kernel_summary(model, X_test, y_test,
+                                 feature_mask=stable_features, n_show=15)
+
+# Aggregate importance-weighted activation with differential
+fig, class_act, diff = plot_aggregate_activation(model, X_test, y_test,
+                                                   feature_mask=stable_features)
 ```
 
 ## Working with Unbalanced Data
@@ -274,6 +320,9 @@ All plotting methods accept an optional `feature_mask` parameter to restrict ana
 | `plot_confusion_conditioned_maps()` | Temporal profiles for correct vs. misclassified trials |
 | `plot_feature_stability()` | Feature presence across CV folds |
 | `plot_receptive_field_diagram()` | Temporal footprint of each feature by pooling operator |
+| `plot_class_mean_activation()` | Activation and convolution output on class means (single feature) |
+| `plot_multi_kernel_summary()` | Binary activation heatmap across all features and classes |
+| `plot_aggregate_activation()` | Importance-weighted activation sum with differential |
 
 ## API Reference
 
@@ -314,13 +363,17 @@ All plotting methods accept an optional `feature_mask` parameter to restrict ana
 | `cv_feature_stability(X, y)` | Feature importance consistency across CV folds. |
 | `plot_feature_stability(stability_results)` | Stability heatmap and bar chart. |
 | `plot_receptive_field_diagram(model)` | Temporal footprint diagram. |
+| `plot_class_mean_activation(model, X, y)` | Activation and convolution on class means (single feature). |
+| `plot_multi_kernel_summary(model, X, y)` | Binary activation heatmap on class means. |
+| `plot_aggregate_activation(model, X, y)` | Importance-weighted activation sum with differential. |
+| `aggregate_temporal_occlusion(model, X, y)` | Per-class occlusion sensitivity over all trials. |
+| `get_stable_features(stability, threshold)` | Extract stable feature indices from CV stability results. |
 | `compute_activation_map(x, kernel_index, dilation, bias)` | Single-trial kernel activation (numba-compiled). |
 | `mutual_information(y_true, y_pred)` | MI between true and predicted labels. |
 | `kneedle(y)` | Kneedle knee-point detection (Satopaa et al., 2011). |
 
 ## References
 
-- Buckheit, J. & Donoho, D.L. (1995). Improved linear discrimination using time-frequency dictionaries. Proc. SPIE, 2569, 540–551.
 - Dempster, A., Petitjean, F., & Webb, G. I. (2020). ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels. *Data Mining and Knowledge Discovery*, 34(5), 1454–1495.
 - Dempster, A., Schmidt, D. F., & Webb, G. I. (2021). MiniRocket: A very fast (almost) deterministic transform for time series classification. *Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery and Data Mining*, 248–257.
 - Guyon, I., Weston, J., Barnhill, S., & Vapnik, V. (2002). Gene selection for cancer classification using support vector machines. *Machine Learning*, 46(1), 389–422.

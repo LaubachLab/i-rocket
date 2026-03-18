@@ -28,7 +28,7 @@ ARCHITECTURE:
     where D depends on series length (D = num_kernels // 84 dilations per kernel,
     with the distribution across dilations fitted to the data).
 
-KEY DIFFERENCES FROM SKTIME:
+KEY DIFFERENCES FROM SKTIME/AEON:
     - All kernel weights, dilations, biases stored as accessible numpy arrays
     - Complete feature→kernel→timepoint traceability
     - Visualization pipeline included
@@ -70,11 +70,6 @@ USAGE:
     model.plot_feature_distributions(X_test, y_test)
     model.plot_kernel_properties()
 
-    # Recursive feature elimination
-    from interp_rocket import recursive_feature_elimination, plot_elimination_curve
-    rfe = recursive_feature_elimination(model, X_train, y_train, X_test, y_test)
-    plot_elimination_curve(rfe)
-
     # Cross-validation
     results = cross_validate(X, y, n_repeats=10, n_folds=10, n_jobs=-2)
 
@@ -87,7 +82,7 @@ Author: Mark Laubach (American University, Department of Neuroscience)
 License: BSD-3-Clause
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import numpy as np
 from itertools import combinations
@@ -3917,7 +3912,7 @@ def plot_receptive_field_diagram(
         for d in decoded
     ]
     ax_rf.set_yticks(range(n_feats))
-    ax_rf.set_yticklabels(y_labels, fontsize=5.5)
+    ax_rf.set_yticklabels(y_labels, fontsize=8)
     ax_rf.set_xlabel('Timepoint')
     ax_rf.set_ylabel('Feature (sorted by dilation)')
     ax_rf.set_xlim(0, n_timepoints)
@@ -3935,6 +3930,517 @@ def plot_receptive_field_diagram(
     fig.suptitle('Feature Receptive Fields', fontsize=13, y=1.01)
     plt.tight_layout()
     return fig
+
+
+# ============================================================================
+# SECTION 20: FEATURE STABILITY SELECTION
+# ============================================================================
+#
+# Provides a helper to extract stable features from cv_feature_stability
+# results using a threshold on the fraction of folds in which each feature
+# appeared in the top set. This is an alternative to RFE that is robust
+# to random seed and split variability.
+#
+# References:
+#   Meinshausen, N. and Bühlmann, P. (2010). Stability selection.
+#       JRSS-B, 72(4):417-473. doi:10.1111/j.1467-9868.2010.00740.x
+#   Saeys, Y., Abeel, T., and Van de Peer, Y. (2008). Robust feature
+#       selection using ensemble feature selection techniques.
+#       Proc. ECML PKDD, 313-325. doi:10.1007/978-3-540-87481-2_21
+
+def get_stable_features(stability, threshold=0.8):
+    """
+    Extract feature indices that appear in the top set in at least
+    `threshold` fraction of CV folds.
+
+    Parameters
+    ----------
+    stability : dict
+        Output from cv_feature_stability().
+    threshold : float, default=0.8
+        Minimum fraction of folds a feature must appear in.
+        1.0 = present in every fold. 0.5 = present in half.
+
+    Returns
+    -------
+    stable_features : ndarray of int
+        Feature indices meeting the threshold, sorted by frequency
+        (most stable first).
+    """
+    counts = stability['feature_counts']
+    n_folds = stability['n_folds_total']
+    mask = counts >= threshold * n_folds
+
+    # Sort by frequency (descending), then by index (ascending) for ties
+    indices = np.where(mask)[0]
+    order = np.argsort(-counts[indices])
+    stable_features = indices[order]
+
+    print(f"Stable features (≥{threshold:.0%} of {n_folds} folds): "
+          f"{len(stable_features)}")
+    return stable_features
+
+
+# ============================================================================
+# SECTION 21: CLASS-MEAN VISUALIZATION
+# ============================================================================
+#
+# Functions for applying decoded kernels to class-averaged signals.
+# These strip trial-to-trial variability and show what each kernel
+# detects on the idealized signal for each class.
+
+def plot_class_mean_activation(
+    model, X, y, feature_mask=None, feature_rank=0,
+    figsize=None,
+):
+    """
+    Side-by-side visualization of kernel activation (left) and raw
+    convolution output (right) on class-mean signals for a single feature.
+
+    Parameters
+    ----------
+    model : InterpRocket
+        Fitted model.
+    X : ndarray, shape (n_samples, n_timepoints)
+        Data (typically X_test).
+    y : array-like
+        Class labels.
+    feature_mask : array-like of int, optional
+        Subset of feature indices (e.g., from get_stable_features).
+    feature_rank : int, default=0
+        Which feature to plot, ranked by importance within feature_mask.
+        0 = top feature, 1 = second, etc.
+    figsize : tuple, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+
+    top = model.get_top_features(feature_mask=feature_mask)
+    if feature_rank >= len(top):
+        raise ValueError(
+            f"feature_rank={feature_rank} but only {len(top)} features available"
+        )
+    f = top[feature_rank]
+    ki = f['kernel_index']
+    dil = f['dilation']
+    bias = f['bias']
+    rep = f['representation']
+    pooling = f['pooling_op']
+
+    classes = np.unique(y)
+    n_classes = len(classes)
+    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+
+    if figsize is None:
+        figsize = (14, 3 * n_classes)
+
+    fig, axes = plt.subplots(n_classes, 2, figsize=figsize, sharex=True)
+    if n_classes == 1:
+        axes = axes[np.newaxis, :]
+
+    for k, cls in enumerate(classes):
+        mask = y == cls
+        if rep == 'diff':
+            class_mean = np.diff(X[mask].mean(axis=0)).astype(np.float32)
+        else:
+            class_mean = X[mask].mean(axis=0).astype(np.float32)
+
+        conv_out, act, t_idx = compute_activation_map(
+            class_mean, ki, np.int32(dil), np.float32(bias)
+        )
+
+        # Left: activation map
+        ax_act = axes[k, 0]
+        ax_act.plot(class_mean, color='gray', alpha=0.5, label='Class mean')
+        ax_act.fill_between(
+            t_idx, 0, act * class_mean.max() * 0.3,
+            color=colors[k], alpha=0.3, label='Activation'
+        )
+        ax_act.set_ylabel(f'Class {cls}')
+        ax_act.legend(fontsize=7)
+        ax_act.grid(True, alpha=0.2)
+
+        # Right: convolution output with bias line
+        ax_conv = axes[k, 1]
+        ax_conv.plot(class_mean, color='gray', alpha=0.5, label='Class mean')
+        ax2 = ax_conv.twinx()
+        ax2.plot(t_idx, conv_out, color=colors[k], linewidth=1.5,
+                 label='Conv output')
+        ax2.axhline(bias, color='black', linestyle='--', linewidth=0.8,
+                     label=f'Bias={bias:.2f}')
+        ax2.fill_between(t_idx, bias, conv_out, where=conv_out > bias,
+                         color=colors[k], alpha=0.2)
+        ax2.set_ylabel('Conv output')
+        if k == 0:
+            ax2.legend(fontsize=7, loc='upper right')
+        ax_conv.grid(True, alpha=0.2)
+
+    axes[0, 0].set_title('Activation on class mean')
+    axes[0, 1].set_title('Convolution output on class mean')
+    axes[-1, 0].set_xlabel('Timepoint')
+    axes[-1, 1].set_xlabel('Timepoint')
+
+    fig.suptitle(
+        f'K{ki} d={dil} {pooling} ({rep}) — rank {feature_rank + 1}',
+        fontsize=12, y=1.01
+    )
+    plt.tight_layout()
+    return fig
+
+
+def plot_multi_kernel_summary(
+    model, X, y, feature_mask=None, n_show=15, figsize=None,
+):
+    """
+    Heatmap of binary activation across top features on class-mean signals.
+
+    Rows are features sorted by importance, columns are timepoints, panels
+    are classes. Dark cells indicate the kernel fires at that position on
+    the class mean. Features that never fire on any class mean are marked
+    with † and dimmed.
+
+    Parameters
+    ----------
+    model : InterpRocket
+        Fitted model.
+    X : ndarray, shape (n_samples, n_timepoints)
+    y : array-like
+    feature_mask : array-like of int, optional
+    n_show : int, default=15
+        Maximum number of features to display.
+    figsize : tuple, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+
+    top = model.get_top_features(feature_mask=feature_mask)
+    n_show = min(len(top), n_show)
+    classes = np.unique(y)
+    n_classes = len(classes)
+    n_timepoints = X.shape[1]
+
+    if figsize is None:
+        figsize = (5 * n_classes, 0.4 * n_show + 1.5)
+
+    fig, axes = plt.subplots(1, n_classes, figsize=figsize, sharey=True)
+    if n_classes == 1:
+        axes = [axes]
+
+    # Pre-check: does each feature fire on any class mean?
+    fires_on_mean = []
+    for f in top[:n_show]:
+        any_fires = False
+        for cls in classes:
+            mask = y == cls
+            if f['representation'] == 'diff':
+                cm = np.diff(X[mask].mean(axis=0)).astype(np.float32)
+            else:
+                cm = X[mask].mean(axis=0).astype(np.float32)
+            _, act, _ = compute_activation_map(
+                cm, f['kernel_index'], f['dilation'], f['bias']
+            )
+            if act.max() > 0:
+                any_fires = True
+                break
+        fires_on_mean.append(any_fires)
+
+    for k, cls in enumerate(classes):
+        mask = y == cls
+        act_matrix = []
+        labels = []
+
+        for row_idx, f in enumerate(top[:n_show]):
+            if f['representation'] == 'diff':
+                cm = np.diff(X[mask].mean(axis=0)).astype(np.float32)
+            else:
+                cm = X[mask].mean(axis=0).astype(np.float32)
+
+            _, act, t_idx = compute_activation_map(
+                cm, f['kernel_index'], f['dilation'], f['bias']
+            )
+            act_full = np.zeros(n_timepoints)
+            for i, t in enumerate(t_idx):
+                ti = int(round(t))
+                if 0 <= ti < n_timepoints:
+                    act_full[ti] = act[i]
+            act_matrix.append(act_full)
+
+            tag = "" if fires_on_mean[row_idx] else " †"
+            labels.append(
+                f"K{f['kernel_index']} d={f['dilation']} "
+                f"{f['pooling_op']}{tag}"
+            )
+
+        ax = axes[k]
+        ax.imshow(act_matrix, aspect='auto', cmap='Greys', alpha=0.6,
+                  interpolation='nearest', vmin=0, vmax=0.1)
+
+        # Dim subthreshold rows
+        for row_idx in range(n_show):
+            if not fires_on_mean[row_idx]:
+                ax.axhspan(row_idx - 0.5, row_idx + 0.5,
+                           color='white', alpha=0.6, zorder=2)
+
+        ax.set_xlabel('Timepoint')
+        ax.set_title(f'Class {cls}')
+        if k == 0:
+            ax.set_yticks(range(n_show))
+            ax.set_yticklabels(labels, fontsize=7)
+            for row_idx, label_obj in enumerate(ax.get_yticklabels()):
+                if not fires_on_mean[row_idx]:
+                    label_obj.set_alpha(0.4)
+
+    fig.suptitle(
+        'Activation on class means (top features)\n'
+        '† = subthreshold on class means (fires on individual trials only)',
+        fontsize=11, y=1.04
+    )
+    plt.tight_layout()
+    return fig
+
+
+def plot_aggregate_activation(
+    model, X, y, feature_mask=None, figsize=(8, 6),
+):
+    """
+    Importance-weighted sum of kernel activations on class means,
+    collapsed across all features.
+
+    Top panel shows the aggregate activation curve per class.
+    Bottom panel shows the max-min differential across classes at each
+    timepoint, highlighting where features collectively discriminate.
+
+    Parameters
+    ----------
+    model : InterpRocket
+        Fitted model.
+    X : ndarray, shape (n_samples, n_timepoints)
+    y : array-like
+    feature_mask : array-like of int, optional
+    figsize : tuple, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    class_activation : ndarray, shape (n_classes, n_timepoints)
+    differential : ndarray, shape (n_timepoints,)
+    """
+    import matplotlib.pyplot as plt
+
+    top = model.get_top_features(feature_mask=feature_mask)
+    classes = np.unique(y)
+    n_classes = len(classes)
+    n_timepoints = X.shape[1]
+    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+
+    class_activation = np.zeros((n_classes, n_timepoints))
+
+    for f in top:
+        imp = f['importance']
+        for k, cls in enumerate(classes):
+            mask = y == cls
+            if f['representation'] == 'diff':
+                cm = np.diff(X[mask].mean(axis=0)).astype(np.float32)
+            else:
+                cm = X[mask].mean(axis=0).astype(np.float32)
+
+            _, act, t_idx = compute_activation_map(
+                cm, f['kernel_index'], f['dilation'], f['bias']
+            )
+            for i, t in enumerate(t_idx):
+                ti = int(round(t))
+                if 0 <= ti < n_timepoints:
+                    class_activation[k, ti] += act[i] * imp
+
+    # Normalize by number of features
+    class_activation /= len(top)
+
+    differential = (np.max(class_activation, axis=0)
+                    - np.min(class_activation, axis=0))
+
+    # Plot
+    fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
+
+    ax = axes[0]
+    for k, cls in enumerate(classes):
+        ax.plot(class_activation[k], color=colors[k], linewidth=1.5,
+                label=f'Class {cls}')
+    ax.legend(fontsize=8)
+    ax.set_ylabel('Activation')
+    ax.grid(True, alpha=0.2)
+
+    ax = axes[1]
+    ax.fill_between(range(n_timepoints), differential,
+                    color='gray', alpha=0.4)
+    ax.plot(differential, color='black', linewidth=1.5)
+    ax.set_ylabel('Differential')
+    ax.set_xlabel('Timepoint')
+    ax.grid(True, alpha=0.2)
+
+    fig.suptitle(
+        f'Aggregate kernel activation on class means '
+        f'({len(top)} features)',
+        fontsize=12, y=1.02
+    )
+    plt.tight_layout()
+    return fig, class_activation, differential
+
+
+def aggregate_temporal_occlusion(
+    model, X, y, feature_mask=None, window_size=None,
+    stride=None, verbose=True,
+):
+    """
+    Temporal occlusion sensitivity computed over all trials, grouped by class.
+
+    A sliding window of zeros is passed across each trial. The change in
+    the classifier's decision function is measured at each position and
+    averaged within each class. Returns per-class mean ± SEM profiles
+    and plots them with a differential panel.
+
+    Parameters
+    ----------
+    model : InterpRocket
+        Fitted model.
+    X : ndarray, shape (n_samples, n_timepoints)
+    y : array-like
+    feature_mask : array-like of int, optional
+        If provided, zero out non-masked features before computing
+        the decision function.
+    window_size : int, optional
+        Width of the occlusion window. Default: max(3, n_timepoints // 20).
+    stride : int, optional
+        Step size. Default: max(1, window_size // 2).
+    verbose : bool
+
+    Returns
+    -------
+    results : dict with keys:
+        'class_sensitivities' : dict of class → ndarray (n_trials, n_timepoints)
+        'window_size' : int
+        'stride' : int
+    fig : matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+
+    n_timepoints = X.shape[1]
+    classes = np.unique(y)
+    n_classes = len(classes)
+
+    if window_size is None:
+        window_size = max(3, n_timepoints // 20)
+    if stride is None:
+        stride = max(1, window_size // 2)
+
+    if verbose:
+        print(f"Aggregate temporal occlusion: window={window_size}, "
+              f"stride={stride}, {len(y)} trials")
+
+    def _decision(X_single):
+        features = _transform(
+            X_single,
+            model.dilations_raw_, model.num_features_per_dilation_raw_,
+            model.biases_raw_,
+        )
+        if hasattr(model, 'dilations_diff_'):
+            diff_feats = _transform(
+                np.diff(X_single, axis=1),
+                model.dilations_diff_, model.num_features_per_dilation_diff_,
+                model.biases_diff_,
+            )
+            features = np.hstack([features, diff_feats])
+        if feature_mask is not None:
+            mask_arr = np.zeros(features.shape[1], dtype=bool)
+            valid = feature_mask[feature_mask < features.shape[1]]
+            mask_arr[valid] = True
+            features[:, ~mask_arr] = 0.0
+        features_scaled = model.scaler_.transform(features)
+        return model.classifier_.decision_function(features_scaled)
+
+    class_sensitivities = {cls: [] for cls in classes}
+
+    for trial_idx in range(len(X)):
+        X_single = X[trial_idx:trial_idx + 1].astype(np.float32)
+        base_decision = _decision(X_single)
+
+        sensitivity = np.zeros(n_timepoints)
+        counts = np.zeros(n_timepoints)
+
+        for pos in range(0, n_timepoints - window_size + 1, stride):
+            X_occ = X_single.copy()
+            X_occ[0, pos:pos + window_size] = 0.0
+            occ_decision = _decision(X_occ)
+            impact = np.sum(np.abs(base_decision - occ_decision))
+            sensitivity[pos:pos + window_size] += impact
+            counts[pos:pos + window_size] += 1
+
+        counts[counts == 0] = 1
+        sensitivity /= counts
+
+        cls = y[trial_idx]
+        class_sensitivities[cls].append(sensitivity)
+
+        if verbose and (trial_idx + 1) % 100 == 0:
+            print(f"  {trial_idx + 1}/{len(X)} trials")
+
+    for cls in classes:
+        class_sensitivities[cls] = np.array(class_sensitivities[cls])
+
+    if verbose:
+        print("Done.")
+
+    # Plot
+    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+    fig, axes = plt.subplots(
+        n_classes + 1, 1,
+        figsize=(12, 2.5 * (n_classes + 1)),
+        sharex=True,
+    )
+
+    for k, cls in enumerate(classes):
+        ax = axes[k]
+        sens = class_sensitivities[cls]
+        mean_s = sens.mean(axis=0)
+        sem_s = sens.std(axis=0) / np.sqrt(len(sens))
+
+        ax.fill_between(range(n_timepoints),
+                        mean_s - sem_s, mean_s + sem_s,
+                        alpha=0.2, color=colors[k])
+        ax.plot(range(n_timepoints), mean_s, color=colors[k], linewidth=1.5)
+        ax.set_ylabel(f'Class {cls}\n(n={len(sens)})')
+        ax.grid(True, alpha=0.2)
+
+    # Differential panel
+    ax = axes[-1]
+    all_means = np.array([class_sensitivities[cls].mean(axis=0)
+                          for cls in classes])
+    differential = all_means.max(axis=0) - all_means.min(axis=0)
+    ax.fill_between(range(n_timepoints), differential,
+                    alpha=0.3, color='gray')
+    ax.plot(range(n_timepoints), differential, color='black', linewidth=1.5)
+    ax.set_ylabel('Differential')
+    ax.set_xlabel('Timepoint')
+    ax.grid(True, alpha=0.2)
+
+    fig.suptitle(
+        f'Aggregate Temporal Occlusion '
+        f'(window={window_size}, stride={stride}, {len(y)} trials)',
+        fontsize=12, y=1.01
+    )
+    plt.tight_layout()
+
+    results = {
+        'class_sensitivities': class_sensitivities,
+        'window_size': window_size,
+        'stride': stride,
+    }
+    return results, fig
 
 
 # ============================================================================
