@@ -1,5 +1,9 @@
 # I-ROCKET
 
+[![License: BSD-3](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+[![tests](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml/badge.svg)](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19055359.svg)](https://doi.org/10.5281/zenodo.19055359)
+
 **Interpretable ROCKET: An Analysis Framework for Convolutional Time Series Classification**
 
 **interp_rocket** is a standalone, single-file Python implementation of the MultiRocket algorithm (Tan et al., 2022) with a complete interpretability and analysis framework. Beyond classification, it provides kernel-level feature decoding, recursive feature elimination with principled knee detection, temporal activation and occlusion mapping, information-theoretic feature decomposition, cross-validation stability analysis, confusion-conditioned diagnostics, and receptive field visualization of the classifier's feature set. A companion module provides time series regression via the same interpretable transform. Inspired by the transparent parameter storage in ms_rocket (O'Toole, 2023), interp_rocket follows the same workflow (generate kernels, convolve the training data, extract pooled features, train a linear classifier) while exposing every intermediate parameter for inspection and analysis.
