@@ -10,5 +10,5 @@
 - **pyproject.toml**: Added `three_bumps` to py-modules.
 - Demonstration notebooks for Receptive Field Mapping (`demo_RF_mapping.ipynb`) and the Breiman waveform dataset (`demo_waveform.ipynb`) and two benchmark scripts (`benchmark_waveform.py` and `benchmark_ucr.py`) were added to the `examples` directory.
 
-## 0.1.0 (2026-03-18)
+## 0.1.0 (2026-03-16)
 - Initial release
