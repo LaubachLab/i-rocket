@@ -1,1 +1,1 @@
-8 demonstration noteboooks, 2 benchmark scripts, and a helper file are pending
+Other demonstration noteboooks and a helper file are pending
