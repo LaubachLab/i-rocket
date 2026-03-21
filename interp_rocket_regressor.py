@@ -92,6 +92,23 @@ except ModuleNotFoundError:
     )
 
 # ============================================================================
+# COLOR PALETTE (tab10 as hex, consistent with interp_rocket.py)
+# ============================================================================
+
+TAB10 = [
+    "#1f77b4",  # blue
+    "#ff7f0e",  # orange
+    "#2ca02c",  # green
+    "#d62728",  # red
+    "#9467bd",  # purple
+    "#8c564b",  # brown
+    "#e377c2",  # pink
+    "#7f7f7f",  # gray
+    "#bcbd22",  # olive
+    "#17becf",  # cyan
+]
+
+# ============================================================================
 # SECTION 1: REGRESSION METRICS
 # ============================================================================
 
@@ -588,8 +605,8 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
                 positions,
                 weights,
                 width=max(dil * 0.6, 0.6),
-                color="tab:gray",
-                edgecolor="black",
+                color="#7f7f7f",
+                edgecolor="#2c2c2c",
                 linewidth=0.5,
             )
             ax.set_title(
@@ -597,7 +614,7 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
                 fontsize=9,
             )
             ax.set_xlabel("Dilated position")
-            ax.axhline(0, color="gray", linewidth=0.5)
+            ax.axhline(0, color="#7f7f7f", linewidth=0.5)
             ax.set_ylabel("Weight")
 
             # --- Compute feature values for this kernel ---
@@ -611,13 +628,13 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
 
             # --- Column 1: Feature value vs target scatter ---
             ax = axes[row, 1]
-            ax.scatter(feature_vals, y, s=8, alpha=0.4, color="tab:blue",
+            ax.scatter(feature_vals, y, s=8, alpha=0.4, color="#1f77b4",
                        edgecolors="none")
             # Regression line
             if np.std(feature_vals) > 0:
                 m, b = np.polyfit(feature_vals, y, 1)
                 x_line = np.linspace(feature_vals.min(), feature_vals.max(), 50)
-                ax.plot(x_line, m * x_line + b, color="tab:red", linewidth=1.5)
+                ax.plot(x_line, m * x_line + b, color="#d62728", linewidth=1.5)
                 r_val = np.corrcoef(feature_vals, y)[0, 1]
                 ax.set_title(f"Feature vs Target (r={r_val:.3f})", fontsize=9)
             else:
@@ -659,9 +676,9 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
                     if np.std(col) > 0:
                         corr_by_time[t] = np.corrcoef(col, y)[0, 1]
 
-            ax.plot(range(n_timepoints), corr_by_time, color="tab:green",
+            ax.plot(range(n_timepoints), corr_by_time, color="#2ca02c",
                     linewidth=1.2)
-            ax.axhline(0, color="gray", linewidth=0.5, alpha=0.5)
+            ax.axhline(0, color="#7f7f7f", linewidth=0.5, alpha=0.5)
             ax.set_xlabel("Timepoint")
             ax.set_ylabel("Correlation with target")
             ax.set_title("Temporal activation–target correlation", fontsize=9)
@@ -772,7 +789,7 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
         # Top panel: mean signal with target-colored scatter
         ax = axes[0]
         mean_signal = X[:n_use].mean(axis=0)
-        ax.plot(range(n_timepoints), mean_signal, color="gray", linewidth=1.0,
+        ax.plot(range(n_timepoints), mean_signal, color="#7f7f7f", linewidth=1.0,
                 label="Mean signal")
         ax.set_ylabel("Amplitude")
         ax.set_title("Mean Signal")
@@ -783,11 +800,11 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
         ax = axes[1]
         ax.fill_between(
             range(n_timepoints), importance_by_time,
-            alpha=0.3, color="tab:blue",
+            alpha=0.3, color="#1f77b4",
         )
         ax.plot(
             range(n_timepoints), importance_by_time,
-            color="tab:blue", linewidth=1.2,
+            color="#1f77b4", linewidth=1.2,
         )
         ax.set_xlabel("Timepoint")
         ax.set_ylabel("Importance\n(weighted |correlation|)")
@@ -838,14 +855,14 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
             fi = finfo["feature_index"]
             fvals = features_scaled[:, fi]
 
-            ax.scatter(fvals, y, s=8, alpha=0.4, color="tab:blue",
+            ax.scatter(fvals, y, s=8, alpha=0.4, color="#1f77b4",
                        edgecolors="none")
 
             # Regression line
             if np.std(fvals) > 0:
                 m, b = np.polyfit(fvals, y, 1)
                 x_line = np.linspace(fvals.min(), fvals.max(), 50)
-                ax.plot(x_line, m * x_line + b, color="tab:red",
+                ax.plot(x_line, m * x_line + b, color="#d62728",
                         linewidth=1.2, alpha=0.8)
                 r_val = np.corrcoef(fvals, y)[0, 1]
                 r_label = f"r={r_val:.3f}"
@@ -955,12 +972,12 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
             ax.bar(
                 label, raw_count,
                 label="Raw" if label == "Top" else "",
-                color="tab:blue", alpha=0.7,
+                color="#1f77b4", alpha=0.7,
             )
             ax.bar(
                 label, diff_count, bottom=raw_count,
                 label="Diff" if label == "Top" else "",
-                color="tab:orange", alpha=0.7,
+                color="#ff7f0e", alpha=0.7,
             )
         ax.set_title("Representation (Raw vs Diff)")
         ax.legend()
@@ -979,10 +996,10 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
 
         # --- Importance histogram ---
         ax = axes[1, 2]
-        ax.hist(importance, bins=50, alpha=0.7, color="gray")
+        ax.hist(importance, bins=50, alpha=0.7, color="#7f7f7f")
         threshold = importance[sorted_idx[n_top - 1]]
         ax.axvline(
-            threshold, color="red", linestyle="--",
+            threshold, color="#d62728", linestyle="--",
             label=f"Top-{n_top} threshold",
         )
         ax.set_title("Feature Importance Distribution")
@@ -1252,12 +1269,12 @@ def plot_elimination_curve(rfe_results, figsize=(10, 5)):
 
     # Mark peak
     peak_idx = rfe_results["peak_idx"]
-    ax.axvline(fracs[peak_idx], color="green", linestyle=":", alpha=0.6,
+    ax.axvline(fracs[peak_idx], color="#2ca02c", linestyle=":", alpha=0.6,
                label=f"Peak ({n_feats[peak_idx]} features)")
 
     # Mark knee
     if knee_idx is not None:
-        ax.axvline(fracs[knee_idx], color="red", linestyle="--", alpha=0.6,
+        ax.axvline(fracs[knee_idx], color="#d62728", linestyle="--", alpha=0.6,
                    label=f"Knee ({n_feats[knee_idx]} features)")
         ax.plot(fracs[knee_idx], test_r2[knee_idx], "rv", markersize=10)
 
@@ -1265,7 +1282,7 @@ def plot_elimination_curve(rfe_results, figsize=(10, 5)):
     if "kneedle_idx" in rfe_results and "knee_idx" in rfe_results:
         ki = rfe_results["kneedle_idx"]
         if ki != knee_idx:
-            ax.axvline(fracs[ki], color="purple", linestyle="-.", alpha=0.6,
+            ax.axvline(fracs[ki], color="#9467bd", linestyle="-.", alpha=0.6,
                        label=f"Kneedle ({n_feats[ki]} features)")
 
     ax.set_xlabel("Fraction of features retained")
@@ -1574,7 +1591,7 @@ def plot_occlusion(occ_results, figsize=(12, None)):
         sensitivity = sensitivities[row]
         t = np.arange(len(signal))
 
-        ax.plot(t, signal, color="gray", linewidth=0.8, alpha=0.7)
+        ax.plot(t, signal, color="#7f7f7f", linewidth=0.8, alpha=0.7)
         ax.set_ylabel(
             f"Sample {sample_indices[row]}\n"
             f"true={true_values[row]:.3f}\n"
@@ -1583,8 +1600,8 @@ def plot_occlusion(occ_results, figsize=(12, None)):
         )
 
         ax2 = ax.twinx()
-        ax2.plot(t, sensitivity, color="#D4763A", linewidth=1.2, alpha=0.85)
-        ax2.set_ylabel("Sensitivity", fontsize=8, color="#D4763A")
+        ax2.plot(t, sensitivity, color="#ff7f0e", linewidth=1.2, alpha=0.85)
+        ax2.set_ylabel("Sensitivity", fontsize=8, color="#ff7f0e")
 
         if row == 0:
             ax.set_title(

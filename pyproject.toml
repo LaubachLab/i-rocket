@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interp-rocket"
-version = "0.2.0"
+version = "0.3.0"
 description = "Interpretable ROCKET for time series classification"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}

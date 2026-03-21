@@ -28,7 +28,7 @@ ARCHITECTURE:
     where D depends on series length (D = num_kernels // 84 dilations per kernel,
     with the distribution across dilations fitted to the data).
 
-KEY DIFFERENCES FROM SKTIME/AEON:
+KEY DIFFERENCES FROM SKTIME:
     - All kernel weights, dilations, biases stored as accessible numpy arrays
     - Complete feature→kernel→timepoint traceability
     - Visualization pipeline included
@@ -70,6 +70,11 @@ USAGE:
     model.plot_feature_distributions(X_test, y_test)
     model.plot_kernel_properties()
 
+    # Recursive feature elimination
+    from interp_rocket import recursive_feature_elimination, plot_elimination_curve
+    rfe = recursive_feature_elimination(model, X_train, y_train, X_test, y_test)
+    plot_elimination_curve(rfe)
+
     # Cross-validation
     results = cross_validate(X, y, n_repeats=10, n_folds=10, n_jobs=-2)
 
@@ -82,7 +87,7 @@ Author: Mark Laubach (American University, Department of Neuroscience)
 License: BSD-3-Clause
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import numpy as np
 from itertools import combinations
@@ -100,6 +105,36 @@ from sklearn.metrics import (
     matthews_corrcoef,
     confusion_matrix,
 )
+
+# ============================================================================
+# COLOR PALETTE (tab10 as hex, used throughout all plotting functions)
+# ============================================================================
+
+TAB10 = [
+    "#1f77b4",  # blue
+    "#ff7f0e",  # orange
+    "#2ca02c",  # green
+    "#d62728",  # red
+    "#9467bd",  # purple
+    "#8c564b",  # brown
+    "#e377c2",  # pink
+    "#7f7f7f",  # gray
+    "#bcbd22",  # olive
+    "#17becf",  # cyan
+]
+
+POOLING_COLORS = {
+    "PPV": "#1f77b4",   # blue
+    "MPV": "#ff7f0e",   # orange
+    "MIPV": "#2ca02c",  # green
+    "LSPV": "#9467bd",  # purple
+}
+
+INFO_COLORS = {
+    "redundant": "#ff7f0e",    # orange
+    "synergistic": "#1f77b4",  # blue
+    "independent": "#7f7f7f",  # gray
+}
 
 # ============================================================================
 # SECTION 1: THE 84 BASE KERNELS
@@ -1170,7 +1205,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
             figsize = (4.5 * n_cols, 3.5 * n_kernels)
 
         # Class-specific colors for activation rate lines
-        class_colors = [plt.cm.tab10(i) for i in range(n_classes)]
+        class_colors = [TAB10[i] for i in range(n_classes)]
 
         fig, axes = plt.subplots(
             n_kernels,
@@ -1193,20 +1228,20 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
             ax = axes[row, 0]
             weights = kinfo["kernel_weights"]
             positions = np.arange(9) * dil
-            colors = "tab:gray"
+            colors = "#7f7f7f"
             ax.bar(
                 positions,
                 weights,
                 width=max(dil * 0.6, 0.6),
                 color=colors,
-                edgecolor="black",
+                edgecolor="#2c2c2c",
                 linewidth=0.5,
             )
             ax.set_title(
                 f"Kernel {ki} (d={dil}, {rep})\nimp={imp:.4f} [{pooling}]", fontsize=9
             )
             ax.set_xlabel("Dilated position")
-            ax.axhline(0, color="gray", linewidth=0.5)
+            ax.axhline(0, color="#7f7f7f", linewidth=0.5)
             ax.set_ylabel("Weight")
 
             # --- Compute per-class activation rates ---
@@ -1253,7 +1288,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 for ex_idx in range(n_plot):
                     x = X_use[ex_idx]
                     t_signal = np.arange(len(x))
-                    ax.plot(t_signal, x, alpha=0.3, linewidth=0.8, color="gray")
+                    ax.plot(t_signal, x, alpha=0.3, linewidth=0.8, color="#7f7f7f")
 
                 # Overlay this class's activation rate
                 ax2 = ax.twinx()
@@ -1282,7 +1317,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 class_act_array, axis=0
             )
 
-            ax_diff.plot(range(n_timepoints), diff_rate, color="black", linewidth=1.5)
+            ax_diff.plot(range(n_timepoints), diff_rate, color="#2c2c2c", linewidth=1.5)
             ax_diff.set_xlabel("Timepoint")
             if row == 0:
                 ax_diff.set_title(
@@ -1352,8 +1387,6 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
         figsize : tuple
         feature_mask : array-like of int, optional
             If provided, only these feature indices are eligible for ranking.
-            Typically the surviving indices from RFE:
-                rfe['surviving_indices'][-1]
 
         Returns
         -------
@@ -1374,7 +1407,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
 
         top_features = self.get_top_features(n=n_top, feature_mask=feature_mask)
 
-        fig, axes = plt.subplots(len(classes) + 1, 1, figsize=figsize, sharex=True)
+        fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
 
         if method == "differential":
             # ---------------------------------------------------------
@@ -1459,9 +1492,9 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 ci = class_importances[cls_idx]
                 if ci.max() > 0:
                     ci = ci / ci.max()
-                axes[cls_idx].plot(range(n_timepoints), ci, linewidth=1.2)
-                axes[cls_idx].set_ylabel(f"Class {cls}", fontsize=10)
-                axes[cls_idx].set_ylim(0, 1.1)
+                axes[0].plot(range(n_timepoints), ci, linewidth=1.2)
+                axes[0].set_ylabel("Importance per class", fontsize=10)
+                axes[0].set_ylim(0, 1.1)
 
         else:
             # ---------------------------------------------------------
@@ -1508,9 +1541,9 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 ci = class_importances[cls_idx]
                 if ci.max() > 0:
                     ci = ci / ci.max()
-                axes[cls_idx].plot(range(n_timepoints), ci, linewidth=1.2)
-                axes[cls_idx].set_ylabel(f"Class {cls}", fontsize=10)
-                axes[cls_idx].set_ylim(0, 1.1)
+                axes[0].plot(range(n_timepoints), ci, linewidth=1.2)
+                axes[0].set_ylabel("Importance per class", fontsize=10)
+                axes[0].set_ylim(0, 1.1)
 
             overall_importance = sum(class_importances)
 
@@ -1518,9 +1551,9 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
         if overall_importance.max() > 0:
             overall_importance /= overall_importance.max()
         axes[-1].plot(
-            range(n_timepoints), overall_importance, linewidth=1.2, color="black"
+            range(n_timepoints), overall_importance, linewidth=1.2, color="#2c2c2c"
         )
-        axes[-1].set_ylabel("Overall", fontsize=10)
+        axes[-1].set_ylabel("Overall importance", fontsize=10)
         axes[-1].set_xlabel("Timepoint")
         axes[-1].set_ylim(0, 1.1)
 
@@ -1696,7 +1729,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 label,
                 raw_count,
                 label="Raw" if label == "Top" else "",
-                color="tab:blue",
+                color="#1f77b4",
                 alpha=0.7,
             )
             ax.bar(
@@ -1704,7 +1737,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 diff_count,
                 bottom=raw_count,
                 label="Diff" if label == "Top" else "",
-                color="tab:orange",
+                color="#1f77b4",
                 alpha=0.7,
             )
         ax.set_title("Representation (Raw vs Diff)")
@@ -1724,10 +1757,10 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
 
         # --- Importance histogram ---
         ax = axes[1, 2]
-        ax.hist(importance, bins=50, alpha=0.7, color="gray")
+        ax.hist(importance, bins=50, alpha=0.7, color="#7f7f7f")
         threshold = importance[sorted_idx[n_top - 1]]
         ax.axvline(
-            threshold, color="red", linestyle="--", label=f"Top-{n_top} threshold"
+            threshold, color="#d62728", linestyle="--", label=f"Top-{n_top} threshold"
         )
         ax.set_title("Feature Importance Distribution")
         ax.set_xlabel("Importance (mean |coef|)")
@@ -2123,7 +2156,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
         fracs,
         train_acc,
         "o-",
-        color="#4A7FB5",
+        color="#1f77b4",
         linewidth=1.5,
         markersize=5,
         label="Train accuracy",
@@ -2132,7 +2165,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
         fracs,
         test_acc,
         "s-",
-        color="#D4763A",
+        color="#ff7f0e",
         linewidth=1.5,
         markersize=5,
         label="Test accuracy",
@@ -2149,7 +2182,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
     if 0 <= knee_idx < len(fracs):
         method = rfe_results.get("knee_method", "threshold")
         label = "Knee" if method != "both" else "Knee (threshold)"
-        ax1.axvline(fracs[knee_idx], color="gray", linestyle="--", alpha=0.5)
+        ax1.axvline(fracs[knee_idx], color="#7f7f7f", linestyle="--", alpha=0.5)
 
         # Place annotation near the bottom of the plot, left of the knee
         y_min, y_max = ax1.get_ylim()
@@ -2159,7 +2192,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
             xy=(fracs[knee_idx], test_acc[knee_idx]),
             xytext=(fracs[knee_idx] + 0.08, y_min + 0.02 * (y_max - y_min)),
             fontsize=9,
-            arrowprops=dict(arrowstyle="->", color="gray"),
+            arrowprops=dict(arrowstyle="->", color="#7f7f7f"),
             va='bottom',
         )
 
@@ -2167,7 +2200,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
     if "kneedle_idx" in rfe_results:
         kn_idx = rfe_results["kneedle_idx"] - start_idx
         if 0 <= kn_idx < len(fracs) and kn_idx != knee_idx:
-            ax1.axvline(fracs[kn_idx], color="forestgreen",
+            ax1.axvline(fracs[kn_idx], color="#2ca02c",
                         linestyle="-.", alpha=0.5)
             y_min, y_max = ax1.get_ylim()
             ax1.annotate(
@@ -2178,8 +2211,8 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
                 xytext=(fracs[kn_idx] - 0.08,
                         y_min + 0.12 * (y_max - y_min)),
                 fontsize=9,
-                color="forestgreen",
-                arrowprops=dict(arrowstyle="->", color="forestgreen"),
+                color="#2ca02c",
+                arrowprops=dict(arrowstyle="->", color="#2ca02c"),
                 va='bottom',
             )
 
@@ -2199,7 +2232,7 @@ def plot_elimination_curve(rfe_results, start_fraction=0.5, figsize=(10, 5)):
     ax2.set_xticklabels(tick_labels, fontsize=8)
     ax2.set_xlabel("Number of features", fontsize=9)
 
-    fig.suptitle("Recursive Feature Elimination", fontsize=13, y=1.02)
+    #fig.suptitle("Recursive Feature Elimination", fontsize=13, y=1.02)
     plt.tight_layout()
     return fig
 
@@ -2583,14 +2616,14 @@ def plot_occlusion(occ_results, figsize=(12, None)):
         pred_lbl = class_names[pred_labels[row]]
 
         # Signal
-        ax.plot(t, signal, color="gray", linewidth=0.8, alpha=0.7)
+        ax.plot(t, signal, color="#7f7f7f", linewidth=0.8, alpha=0.7)
         pred_lbl = occ_results["predicted_labels"][row]
         ax.set_ylabel(f"Sample {sample_indices[row]}\ntrue={true_lbl}\npred={pred_lbl}", fontsize=9)
 
         # Sensitivity on twin axis
         ax2 = ax.twinx()
-        ax2.plot(t, sensitivity, color="#D4763A", linewidth=1.2, alpha=0.85)
-        ax2.set_ylabel("Sensitivity", fontsize=8, color="#D4763A")
+        ax2.plot(t, sensitivity, color="#ff7f0e", linewidth=1.2, alpha=0.85)
+        ax2.set_ylabel("Sensitivity", fontsize=8, color="#ff7f0e")
 
         if row == 0:
             correct = "✓" if true_labels[row] == pred_labels[row] else "✗"
@@ -2679,7 +2712,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
     ax_a.hist(
         importances,
         bins=min(30, max(5, n_survivors // 3)),
-        color="tab:blue",
+        color="#1f77b4",
         edgecolor="white",
         alpha=0.8,
     )
@@ -2689,7 +2722,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
     if importances:
         ax_a.axvline(
             np.median(importances),
-            color="red",
+            color="#d62728",
             linestyle="--",
             label=f"Median: {np.median(importances):.3f}",
         )
@@ -2716,11 +2749,11 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
         surv_props,
         width,
         label="Surviving",
-        color="tab:blue",
+        color="#1f77b4",
         alpha=0.8,
     )
     ax_b.bar(
-        x + width / 2, all_props, width, label="All features", color="tab:orange", alpha=0.8
+        x + width / 2, all_props, width, label="All features", color="#ff7f0e", alpha=0.8
     )
     ax_b.set_xticks(x)
     ax_b.set_xticklabels(["Raw signal", "1st Difference"])
@@ -2752,10 +2785,10 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
 
     x4 = np.arange(4)
     ax_c.bar(
-        x4 - width / 2, surv_p, width, label="Surviving", color="tab:blue", alpha=0.8
+        x4 - width / 2, surv_p, width, label="Surviving", color="#1f77b4", alpha=0.8
     )
     ax_c.bar(
-        x4 + width / 2, all_p, width, label="All features", color="tab:orange", alpha=0.8
+        x4 + width / 2, all_p, width, label="All features", color="#ff7f0e", alpha=0.8
     )
     ax_c.set_xticks(x4)
     ax_c.set_xticklabels(pooling_names, fontsize=8)
@@ -2776,7 +2809,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
             alpha=0.6,
             density=True,
             label="Surviving",
-            color="tab:blue",
+            color="#1f77b4",
         )
         ax_d.hist(
             all_rf,
@@ -2784,7 +2817,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
             alpha=0.6,
             density=True,
             label="All features",
-            color="tab:orange",
+            color="#1f77b4",
         )
     ax_d.set_xlabel("Receptive field (timepoints)")
     ax_d.set_ylabel("Density")
@@ -2800,7 +2833,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
     if surv_kernels:
         # Show as histogram
         ax_e.hist(
-            surv_kernels, bins=bins_k, alpha=0.7, color="tab:blue", label="Surviving"
+            surv_kernels, bins=bins_k, alpha=0.7, color="#1f77b4", label="Surviving"
         )
     ax_e.set_xlabel("Kernel index (0–83)")
     ax_e.set_ylabel("Count")
@@ -2838,7 +2871,7 @@ def plot_rfe_survivors(rfe_results, model, step=-1, figsize=(14, 8)):
         fontsize=9,
         verticalalignment="top",
         fontfamily="monospace",
-        bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.8),
+        bbox=dict(boxstyle="round", facecolor="#fffde7", alpha=0.8),
     )
     ax_f.set_title("F. Summary")
 
@@ -3148,11 +3181,6 @@ def plot_information_decomposition(info_results, figsize=(14, 6)):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     # --- Left: scatter plot ---
-    color_map = {
-        'redundant': '#D4763A',
-        'synergistic': '#4A7FB5',
-        'independent': '#808080',
-    }
     marker_map = {
         'redundant': 'v',
         'synergistic': '^',
@@ -3164,19 +3192,19 @@ def plot_information_decomposition(info_results, figsize=(14, 6)):
         if mask.any():
             ax1.scatter(
                 I_single[mask], P_feature[mask],
-                c=color_map[cls_type],
+                c=INFO_COLORS[cls_type],
                 marker=marker_map[cls_type],
                 s=40, alpha=0.7, edgecolors='white', linewidths=0.5,
                 label=f'{cls_type.capitalize()} ({mask.sum()})',
             )
 
     # Threshold lines
-    ax1.axhline(threshold, color='gray', linestyle='--', alpha=0.5,
+    ax1.axhline(threshold, color='#7f7f7f', linestyle='--', alpha=0.5,
                 linewidth=0.8, label=f'±threshold ({threshold:.4f})')
-    ax1.axhline(-threshold, color='gray', linestyle='--', alpha=0.5,
+    ax1.axhline(-threshold, color='#7f7f7f', linestyle='--', alpha=0.5,
                 linewidth=0.8)
-    ax1.axhline(0, color='black', linewidth=0.5, alpha=0.3)
-    ax1.axvline(0, color='black', linewidth=0.5, alpha=0.3)
+    ax1.axhline(0, color='#2c2c2c', linewidth=0.5, alpha=0.3)
+    ax1.axvline(0, color='#2c2c2c', linewidth=0.5, alpha=0.3)
 
     ax1.set_xlabel('Single-feature MI (bits)')
     ax1.set_ylabel('Partial information (bits)')
@@ -3191,8 +3219,8 @@ def plot_information_decomposition(info_results, figsize=(14, 6)):
         info_results['n_independent'],
         info_results['n_synergistic'],
     ]
-    bar_colors = [color_map['redundant'], color_map['independent'],
-                  color_map['synergistic']]
+    bar_colors = [INFO_COLORS['redundant'], INFO_COLORS['independent'],
+                  INFO_COLORS['synergistic']]
 
     n_total = len(classification)
     bars = ax2.bar(categories, counts, color=bar_colors, alpha=0.7,
@@ -3215,7 +3243,7 @@ def plot_information_decomposition(info_results, figsize=(14, 6)):
              f'Σ I_single = {sum_single:.3f}\n'
              f'P_ensemble = {P_ens:+.3f}',
              transform=ax2.transAxes, ha='right', va='top', fontsize=8,
-             bbox=dict(boxstyle='round,pad=0.3', facecolor='wheat', alpha=0.5))
+             bbox=dict(boxstyle='round,pad=0.3', facecolor='#f5deb3', alpha=0.5))
 
     plt.tight_layout()
     return fig
@@ -3299,9 +3327,9 @@ def plot_kernel_similarity(
 
     if n_feats <= 30:
         ax1.set_xticks(range(n_feats))
-        ax1.set_xticklabels(labels, rotation=90, fontsize=5)
+        ax1.set_xticklabels(labels, rotation=90, fontsize=8)
         ax1.set_yticks(range(n_feats))
-        ax1.set_yticklabels(labels, fontsize=5)
+        ax1.set_yticklabels(labels, fontsize=8)
 
     # --- Right: network/adjacency summary ---
     abs_corr = np.abs(corr)
@@ -3332,12 +3360,12 @@ def plot_kernel_similarity(
 
     bins = np.linspace(0, 1, 30)
     if within_corrs:
-        ax2.hist(within_corrs, bins=bins, alpha=0.6, color='tab:blue',
+        ax2.hist(within_corrs, bins=bins, alpha=0.6, color='#1f77b4',
                  label=f'Within-kernel ({len(within_corrs)})', density=True)
     if between_corrs:
-        ax2.hist(between_corrs, bins=bins, alpha=0.6, color='tab:orange',
+        ax2.hist(between_corrs, bins=bins, alpha=0.6, color='#ff7f0e',
                  label=f'Between-kernel ({len(between_corrs)})', density=True)
-    ax2.axvline(threshold, color='gray', linestyle='--', alpha=0.7,
+    ax2.axvline(threshold, color='#7f7f7f', linestyle='--', alpha=0.7,
                 label=f'Threshold ({threshold})')
     ax2.set_xlabel('|Correlation|')
     ax2.set_ylabel('Density')
@@ -3345,7 +3373,7 @@ def plot_kernel_similarity(
                   f'{n_unique} unique kernels, {n_edges} edges > {threshold}')
     ax2.legend(fontsize=8)
 
-    fig.suptitle('Kernel Similarity Network', fontsize=13, y=1.02)
+    #fig.suptitle('Kernel Similarity Network', fontsize=13, y=1.02)
     plt.tight_layout()
     return fig, corr
 
@@ -3410,7 +3438,7 @@ def plot_confusion_conditioned_maps(
     if n_classes == 1:
         axes = [axes]
 
-    colors_correct = [plt.cm.tab10(i) for i in range(n_classes)]
+    colors_correct = [TAB10[i] for i in range(n_classes)]
 
     for k, cls in enumerate(classes):
         ax = axes[k]
@@ -3426,7 +3454,7 @@ def plot_confusion_conditioned_maps(
         # Compute temporal activation profiles for correct and wrong
         for mask, label, color, ls in [
             (correct_mask, f"Correct ({n_correct})", colors_correct[k], "-"),
-            (wrong_mask, f"Misclassified ({n_wrong})", "gray", "--"),
+            (wrong_mask, f"Misclassified ({n_wrong})", "#7f7f7f", "--"),
         ]:
             if mask.sum() == 0:
                 continue
@@ -3479,7 +3507,7 @@ def plot_confusion_conditioned_maps(
         ax.grid(True, alpha=0.2)
 
     axes[-1].set_xlabel("Timepoint")
-    fig.suptitle("Confusion-Conditioned Activation Maps", fontsize=13, y=1.01)
+    #fig.suptitle("Confusion-Conditioned Activation Maps", fontsize=13, y=1.01)
     plt.tight_layout()
     return fig
 
@@ -3680,7 +3708,7 @@ def plot_feature_stability(stability, model=None, figsize=(14, None)):
     )
 
     # --- Heatmap ---
-    cmap = ListedColormap(['#f0f0f0', '#2c5f8a'])
+    cmap = ListedColormap(['#f0f0f0', '#1f77b4'])
     ax_heat.imshow(matrix, cmap=cmap, aspect='auto', interpolation='nearest')
     ax_heat.set_facecolor('white')
 
@@ -3698,10 +3726,10 @@ def plot_feature_stability(stability, model=None, figsize=(14, None)):
     ax_heat.set_title(f'Feature Presence in Top Set ({n_folds} folds)')
 
     # --- Bar chart ---
-    colors = ['#2c5f8a' if s >= 0.8 else '#a8c4da' for s in sorted_scores]
+    colors = ['#1f77b4' if s >= 0.8 else '#a3c4e0' for s in sorted_scores]
     ax_bar.barh(range(n_features), sorted_scores, color=colors,
                 edgecolor='white', linewidth=0.3)
-    ax_bar.axvline(0.8, color='gray', linestyle='--', linewidth=0.8,
+    ax_bar.axvline(0.8, color='#7f7f7f', linestyle='--', linewidth=0.8,
                    label='80% threshold')
     ax_bar.set_ylim(ax_heat.get_ylim())
     ax_bar.set_yticklabels([])
@@ -3709,7 +3737,7 @@ def plot_feature_stability(stability, model=None, figsize=(14, None)):
     ax_bar.set_title('Feature Stability')
     ax_bar.legend(fontsize=7, loc='lower right')
 
-    fig.suptitle('Cross-Validation Feature Stability', fontsize=13, y=1.01)
+    #fig.suptitle('Feature Stability', fontsize=13, y=0.9)
     return fig
 
 
@@ -3792,7 +3820,7 @@ def plot_receptive_field_diagram(
         y_test = np.asarray(y_test)
         classes = np.unique(y_test)
         n_classes = len(classes)
-        colors_class = [plt.cm.tab10(i) for i in range(n_classes)]
+        colors_class = [TAB10[i] for i in range(n_classes)]
         t = np.arange(n_timepoints)
 
         # Compute class means (used for both the plot and activation peaks)
@@ -3882,17 +3910,11 @@ def plot_receptive_field_diagram(
         peak_centers.append(peak_t)
 
     # --- Bottom panel: receptive fields ---
-    pooling_colors = {
-        'PPV': '#4A7FB5',
-        'MPV': '#D4763A',
-        'MIPV': '#59A14F',
-        'LSPV': '#B07AA1',
-    }
 
     for row, info in enumerate(decoded):
         rf = info['receptive_field']
         dil = info['dilation']
-        color = pooling_colors.get(info['pooling_op'], 'gray')
+        color = POOLING_COLORS.get(info['pooling_op'], '#7f7f7f')
         imp_alpha = 0.3 + 0.7 * info['importance']
 
         # RF bar centered on peak differential activation
@@ -3922,12 +3944,12 @@ def plot_receptive_field_diagram(
     # Legend for pooling operators
     from matplotlib.patches import Patch
     legend_elements = [Patch(facecolor=c, alpha=0.7, label=op)
-                       for op, c in pooling_colors.items()]
+                       for op, c in POOLING_COLORS.items()]
     ax_rf.legend(handles=legend_elements, fontsize=8, loc='lower right',
                  title='Pooling', title_fontsize=8)
 
     ax_rf.set_title(f'Receptive Field Diagram ({n_feats} features)')
-    fig.suptitle('Feature Receptive Fields', fontsize=13, y=1.01)
+    #fig.suptitle('Feature Receptive Fields', fontsize=13, y=1.01)
     plt.tight_layout()
     return fig
 
@@ -4032,7 +4054,7 @@ def plot_class_mean_activation(
 
     classes = np.unique(y)
     n_classes = len(classes)
-    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+    colors = [TAB10[i] for i in range(n_classes)]
 
     if figsize is None:
         figsize = (14, 3 * n_classes)
@@ -4054,7 +4076,7 @@ def plot_class_mean_activation(
 
         # Left: activation map
         ax_act = axes[k, 0]
-        ax_act.plot(class_mean, color='gray', alpha=0.5, label='Class mean')
+        ax_act.plot(class_mean, color='#7f7f7f', alpha=0.5, label='Class mean')
         ax_act.fill_between(
             t_idx, 0, act * class_mean.max() * 0.3,
             color=colors[k], alpha=0.3, label='Activation'
@@ -4065,11 +4087,11 @@ def plot_class_mean_activation(
 
         # Right: convolution output with bias line
         ax_conv = axes[k, 1]
-        ax_conv.plot(class_mean, color='gray', alpha=0.5, label='Class mean')
+        ax_conv.plot(class_mean, color='#7f7f7f', alpha=0.5, label='Class mean')
         ax2 = ax_conv.twinx()
         ax2.plot(t_idx, conv_out, color=colors[k], linewidth=1.5,
                  label='Conv output')
-        ax2.axhline(bias, color='black', linestyle='--', linewidth=0.8,
+        ax2.axhline(bias, color='#2c2c2c', linestyle='--', linewidth=0.8,
                      label=f'Bias={bias:.2f}')
         ax2.fill_between(t_idx, bias, conv_out, where=conv_out > bias,
                          color=colors[k], alpha=0.2)
@@ -4178,7 +4200,9 @@ def plot_multi_kernel_summary(
             )
 
         ax = axes[k]
-        ax.imshow(act_matrix, aspect='auto', cmap='Greys', alpha=0.6,
+        from matplotlib.colors import ListedColormap
+        cmap_binary = ListedColormap(['#f0f0f0', '#1f77b4'])
+        ax.imshow(act_matrix, aspect='auto', cmap=cmap_binary, alpha=0.6,
                   interpolation='nearest', vmin=0, vmax=0.1)
 
         # Dim subthreshold rows
@@ -4191,7 +4215,7 @@ def plot_multi_kernel_summary(
         ax.set_title(f'Class {cls}')
         if k == 0:
             ax.set_yticks(range(n_show))
-            ax.set_yticklabels(labels, fontsize=7)
+            ax.set_yticklabels(labels, fontsize=8)
             for row_idx, label_obj in enumerate(ax.get_yticklabels()):
                 if not fires_on_mean[row_idx]:
                     label_obj.set_alpha(0.4)
@@ -4237,7 +4261,7 @@ def plot_aggregate_activation(
     classes = np.unique(y)
     n_classes = len(classes)
     n_timepoints = X.shape[1]
-    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+    colors = [TAB10[i] for i in range(n_classes)]
 
     class_activation = np.zeros((n_classes, n_timepoints))
 
@@ -4277,8 +4301,8 @@ def plot_aggregate_activation(
 
     ax = axes[1]
     ax.fill_between(range(n_timepoints), differential,
-                    color='gray', alpha=0.4)
-    ax.plot(differential, color='black', linewidth=1.5)
+                    color='#7f7f7f', alpha=0.4)
+    ax.plot(differential, color='#2c2c2c', linewidth=1.5)
     ax.set_ylabel('Differential')
     ax.set_xlabel('Timepoint')
     ax.grid(True, alpha=0.2)
@@ -4396,7 +4420,7 @@ def aggregate_temporal_occlusion(
         print("Done.")
 
     # Plot
-    colors = [plt.cm.tab10(i) for i in range(n_classes)]
+    colors = [TAB10[i] for i in range(n_classes)]
     fig, axes = plt.subplots(
         n_classes + 1, 1,
         figsize=(12, 2.5 * (n_classes + 1)),
@@ -4422,8 +4446,8 @@ def aggregate_temporal_occlusion(
                           for cls in classes])
     differential = all_means.max(axis=0) - all_means.min(axis=0)
     ax.fill_between(range(n_timepoints), differential,
-                    alpha=0.3, color='gray')
-    ax.plot(range(n_timepoints), differential, color='black', linewidth=1.5)
+                    alpha=0.3, color='#7f7f7f')
+    ax.plot(range(n_timepoints), differential, color='#2c2c2c', linewidth=1.5)
     ax.set_ylabel('Differential')
     ax.set_xlabel('Timepoint')
     ax.grid(True, alpha=0.2)
@@ -4441,6 +4465,295 @@ def aggregate_temporal_occlusion(
         'stride': stride,
     }
     return results, fig
+
+
+# ============================================================================
+# SECTION 23: PERMUTATION IMPORTANCE (PIMP)
+# ============================================================================
+#
+# Implements the PIMP algorithm (Altmann et al., 2010) for computing
+# statistically corrected feature importance with p-values. The method
+# permutes class labels, refits a classifier, and compares observed
+# importance against the null distribution.
+#
+# By default, a RandomForestClassifier is used for the
+# importance computation (not the main InterpRocket Ridge classifier).
+# Tree-based methods assign zero importance to genuinely uninformative
+# features, producing a meaningful null distribution. Ridge assigns
+# non-trivial coefficients to all features due to regularization,
+# causing every feature to appear significant. The ROCKET transform
+# is label-independent, so it is computed once and reused.
+#
+# The InterpRocket Ridge classifier remains the basis for all
+# visualization and interpretability tools (temporal importance,
+# RF diagrams, activation maps). PIMP provides an independent
+# statistical test using a different classifier architecture.
+#
+# Reference:
+#   Altmann, A., Tolosi, L., Sander, O., and Lengauer, T. (2010).
+#       Permutation importance: a corrected feature importance measure.
+#       Bioinformatics, 26(10):1340-1347.
+
+def permutation_importance_test(
+    model, X, y, n_permutations=100, classifier=None,
+    feature_mask=None, random_state=42, verbose=True,
+):
+    """
+    PIMP: Permutation Importance with p-values (Altmann et al., 2010).
+
+    Computes feature importance on the real data using a tree-based
+    classifier, then builds a null distribution by permuting class
+    labels and refitting. Returns p-values for each feature.
+
+    By default uses RandomForestClassifier, which produces meaningful
+    null distributions because uninformative features receive zero
+    importance. An alternative classifier can be passed via the
+    `classifier` parameter.
+
+    The ROCKET transform is label-independent, so it is computed once
+    and reused across all permutations.
+
+    Parameters
+    ----------
+    model : InterpRocket
+        Fitted model. Must have been fitted with fit() before calling.
+    X : ndarray, shape (n_samples, n_timepoints)
+        Training data (same data used to fit the model).
+    y : array-like
+        Class labels.
+    n_permutations : int, default=100
+        Number of label permutations for the null distribution.
+    classifier : sklearn classifier, optional
+        Classifier to use for importance computation. Must provide
+        either `feature_importances_` (tree-based) or `coef_` (linear)
+        after fitting. Default: RandomForestClassifier.
+    feature_mask : array-like of int, optional
+        Subset of feature indices to test. If None, tests all features.
+    random_state : int, default=42
+        Seed for reproducibility.
+    verbose : bool
+
+    Returns
+    -------
+    results : dict with keys:
+        'observed_importance' : ndarray, shape (n_features,)
+            Real feature importance (normalized to max=1).
+        'null_importances' : ndarray, shape (n_permutations, n_features)
+            Importance values from each permutation.
+        'p_values' : ndarray, shape (n_features,)
+            Fraction of null importances >= observed importance.
+        'significant_mask' : ndarray of bool, shape (n_features,)
+            Features with p < 0.05.
+        'n_significant' : int
+        'feature_mask' : ndarray or None
+        'n_permutations' : int
+        'classifier_type' : str
+    """
+    from sklearn.base import clone
+    from sklearn.preprocessing import StandardScaler
+
+    if classifier is None:
+        from sklearn.ensemble import RandomForestClassifier
+        classifier = RandomForestClassifier(
+            n_estimators=100, max_depth=8, n_jobs=-1,
+            random_state=random_state,
+        )
+
+    rng = np.random.RandomState(random_state)
+
+    # Transform data once (label-independent)
+    features = model.transform(X)
+    n_total_features = features.shape[1]
+
+    if feature_mask is not None:
+        feature_mask = np.asarray(feature_mask)
+    else:
+        feature_mask = np.arange(n_total_features)
+
+    n_test = len(feature_mask)
+
+    def _get_importance(clf):
+        """Extract importance from fitted classifier."""
+        if hasattr(clf, 'feature_importances_'):
+            return clf.feature_importances_.copy()
+        elif hasattr(clf, 'coef_'):
+            coefs = clf.coef_
+            if coefs.ndim > 1:
+                return np.linalg.norm(coefs, axis=0, ord=2)
+            else:
+                return np.abs(coefs.ravel())
+        else:
+            raise ValueError(
+                "Classifier must provide feature_importances_ or coef_"
+            )
+
+    # Fit on real labels
+    scaler = StandardScaler()
+    features_scaled = scaler.fit_transform(features)
+
+    clf_real = clone(classifier)
+    clf_real.fit(features_scaled, y)
+    obs_imp = _get_importance(clf_real)
+
+    obs_max = obs_imp.max()
+    if obs_max > 0:
+        obs_imp = obs_imp / obs_max
+
+    clf_type = type(classifier).__name__
+
+    if verbose:
+        print(f"PIMP: {n_permutations} permutations, "
+              f"{n_test} features, classifier={clf_type}")
+
+    # Build null distribution
+    null_importances = np.zeros((n_permutations, n_total_features))
+
+    for perm_idx in range(n_permutations):
+        y_perm = rng.permutation(y)
+
+        clf_perm = clone(classifier)
+        clf_perm.fit(features_scaled, y_perm)
+
+        perm_imp = _get_importance(clf_perm)
+
+        # Normalize by the same max as observed (comparable scale)
+        if obs_max > 0:
+            perm_imp = perm_imp / obs_max
+
+        null_importances[perm_idx] = perm_imp
+
+        if verbose and (perm_idx + 1) % 25 == 0:
+            print(f"  Permutation {perm_idx + 1}/{n_permutations}")
+
+    # Compute p-values: fraction of null >= observed
+    p_values = np.ones(n_total_features)
+    for fi in feature_mask:
+        p_values[fi] = np.mean(null_importances[:, fi] >= obs_imp[fi])
+
+    significant = p_values[feature_mask] < 0.05
+    n_sig = int(significant.sum())
+
+    if verbose:
+        print(f"\n  Significant features (p < 0.05): {n_sig} / {n_test}")
+        print(f"  Non-significant: {n_test - n_sig} / {n_test}")
+
+    results = {
+        'observed_importance': obs_imp,
+        'null_importances': null_importances,
+        'p_values': p_values,
+        'significant_mask': p_values < 0.05,
+        'n_significant': n_sig,
+        'feature_mask': feature_mask,
+        'n_permutations': n_permutations,
+        'classifier_type': clf_type,
+    }
+    return results
+
+
+def plot_permutation_importance(
+    pimp_results, model=None, n_show=30, alpha=0.05, figsize=(12, 8),
+):
+    """
+    Visualize PIMP results: observed importance vs null distribution.
+
+    Left panel: bar chart of observed importance for top features,
+    colored by significance. Right panel: p-value distribution.
+
+    Parameters
+    ----------
+    pimp_results : dict
+        Output from permutation_importance_test().
+    model : InterpRocket, optional
+        If provided, feature labels include kernel/dilation/pooling info.
+    n_show : int, default=30
+        Maximum features to display in the bar chart.
+    alpha : float, default=0.05
+        Significance threshold.
+    figsize : tuple
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+
+    obs = pimp_results['observed_importance']
+    pvals = pimp_results['p_values']
+    null = pimp_results['null_importances']
+    fm = pimp_results['feature_mask']
+
+    # Sort features by observed importance
+    order = np.argsort(-obs[fm])
+    top_idx = fm[order[:n_show]]
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize,
+                             gridspec_kw={'width_ratios': [3, 1]})
+
+    # Left: importance bar chart with null distribution overlay
+    ax = axes[0]
+    y_pos = np.arange(len(top_idx))
+
+    # Null distribution summary per feature (mean + 95th percentile)
+    null_means = null[:, top_idx].mean(axis=0)
+    null_95 = np.percentile(null[:, top_idx], 95, axis=0)
+
+    # Bars colored by significance
+    colors = ['#1f77b4' if pvals[fi] < alpha else '#c7c7c7'
+              for fi in top_idx]
+
+    ax.barh(y_pos, obs[top_idx], color=colors, edgecolor='white',
+            linewidth=0.5, zorder=3)
+    ax.set_ylim(-0.5, len(top_idx) - 0.5)
+    ax.scatter(null_95, y_pos, color='#d62728', marker='|', s=80,
+               zorder=4, label='Null 95th pctl')
+    ax.scatter(null_means, y_pos, color='#7f7f7f', marker='|', s=80,
+               zorder=4, alpha=0.5, label='Null mean')
+
+    # Labels
+    if model is not None:
+        labels = []
+        for fi in top_idx:
+            info = model.decode_feature_index(int(fi))
+            p_str = f"p={pvals[fi]:.3f}" if pvals[fi] >= 0.001 else "p<0.001"
+            labels.append(
+                f"K{info['kernel_index']}d{info['dilation']} "
+                f"{info['pooling_op']} ({p_str})"
+            )
+    else:
+        labels = [f"F{fi} (p={pvals[fi]:.3f})" for fi in top_idx]
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel('Importance')
+    ax.set_title(f'Permutation Importance ({len(top_idx)} features)')
+    ax.legend(fontsize=8, loc='lower right')
+    ax.grid(True, alpha=0.2, axis='x')
+
+    # Right: p-value histogram
+    ax2 = axes[1]
+    p_tested = pvals[fm]
+    ax2.hist(p_tested, bins=20, color='#1f77b4', edgecolor='white',
+             orientation='horizontal')
+    ax2.axhline(alpha, color='#d62728', linestyle='--', linewidth=1.5,
+                label=f'alpha={alpha}')
+    ax2.set_xlabel('Count')
+    ax2.set_ylabel('p-value')
+    ax2.set_title('p-value distribution')
+    ax2.legend(fontsize=8)
+    ax2.set_ylim(0, 1)
+    ax2.invert_yaxis()
+
+    n_sig = pimp_results['n_significant']
+    n_total = len(fm)
+    clf_type = pimp_results.get('classifier_type', 'unknown')
+    fig.suptitle(
+        f'PIMP ({clf_type}): {n_sig}/{n_total} features significant '
+        f'at p < {alpha} ({pimp_results["n_permutations"]} permutations)',
+        fontsize=12, y=1.01,
+    )
+    plt.tight_layout()
+    return fig
 
 
 # ============================================================================
