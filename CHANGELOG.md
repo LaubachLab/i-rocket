@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1 (2026-03-21)
+- **plot_receptive_field_diagram**: Sorting of receptive fields switched from dilation to classifier importance.
+
 ## 0.3.0 (2026-03-21)
 - **Permutation importance (PIMP)**: Added `permutation_importance_test()` and `plot_permutation_importance()` implementing the PIMP algorithm (Altmann et al., 2010) for statistically corrected feature importance with p-values. Uses RandomForestClassifier by default, which produces meaningful null distributions for ROCKET features (Ridge coefficients cause all features to appear significant).
 - **Font size fixes**: Increased y-axis label font size to 8 in `plot_kernel_similarity` and `plot_multi_kernel_summary` for readability in notebooks and exported figures.
