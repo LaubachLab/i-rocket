@@ -3759,7 +3759,7 @@ def plot_receptive_field_diagram(
 
     Top panel: class means (if X_test and y_test provided).
     Bottom panel: horizontal bars showing each feature's receptive field,
-    colored by pooling operator, with vertical position ordered by dilation.
+    colored by pooling operator, with vertical position ordered by importance.
 
     Parameters
     ----------
@@ -3798,8 +3798,11 @@ def plot_receptive_field_diagram(
         info['importance'] = float(importance[fi])
         decoded.append(info)
 
-    # Sort by dilation (ascending) for visual clarity
-    decoded.sort(key=lambda x: (x['dilation'], x['kernel_index']))
+    ## Sort by dilation (ascending) for visual clarity
+    # decoded.sort(key=lambda x: (x['dilation'], x['kernel_index']))
+
+    # Sort by importance from the classifier
+    decoded.sort(key=lambda x: -x['importance'])
 
     n_timepoints = X_test.shape[1]
     n_feats = len(decoded)
