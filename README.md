@@ -99,10 +99,9 @@ i-rocket/
 |   |-- demo_RF_mapping.ipynb               # Receptive field localization with single-bump data
 |   |-- demo_visualization.ipynb            # Comparison of temporal features from DP and I-ROCKET
 |   |-- demo_multivariate.ipynb             # Extension to multichannel data
-|   |-- demo_regression.ipynb               # Time series regression (FloodModeling1 from aeon)
 |   |-- demo_pimp.ipynb                     # Permutation importance (PIMP) on waveform
 |   |-- demo_amee.ipynb                     # AMEE evaluation of saliency maps
-|   |-- demo_tshap_amee.ipynb              # TSHAP + AMEE combined evaluation
+|   |-- demo_tshap_amee.ipynb               # TSHAP + AMEE combined evaluation
 |   |-- demo_channel_selection.ipynb        # Channel selection for multivariate data
 |   |-- benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform
 |   +-- benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
