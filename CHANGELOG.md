@@ -1,7 +1,39 @@
 # Changelog
 
-## 0.3.1 (2026-03-21)
-- **plot_receptive_field_diagram**: Sorting of receptive fields switched from dilation to classifier importance.
+## v0.4 (2026-03-25)
+
+### Extensions (new directory: `extensions/`)
+
+- **AMEE evaluation** (`amee_evaluation.py`): Perturbation-based evaluation framework for ranking saliency maps, implementing the approach of Nguyen et al. (2024). Includes four perturbation strategies (zero, mean, noise, inverse), random and inverse baselines, and visualization of accuracy drop curves and rankings.
+- **TSHAP integration** (`tshap_integration.py`): Bridge module connecting I-ROCKET with the TSHAP package (Le Nguyen and Ifrim, 2025) for instance-level Shapley value attributions. Wraps I-ROCKET's prediction pipeline for TSHAP compatibility and provides comparison plots.
+- **Channel selection** (`channel_selection.py`): Classifier-agnostic channel selection for multivariate time series based on class prototype distances, following Dhariyal et al. (2023). Includes ECP (elbow class pairwise) and top-k methods with visualization.
+- **Kernel explorer** (`kernel_explorer.py`): Standalone interactive tool for exploring the 84 base kernels, dilation, bias thresholding, and pooling operators. Launches in its own matplotlib window.
+
+### New demo notebooks
+
+- `demo_RF_mapping.ipynb` in `examples/`: Receptive field mapping and temporal importance on the single-bump dataset, demonstrating localization of a known discriminative feature.
+- `demo_tshap_amee_waveform.ipynb` in `extensions/`: AMEE and TSHAP evaluation on the waveform dataset.
+- `demo_tshap_amee_bump.ipynb` in `extensions/`: AMEE and TSHAP evaluation on a synthetic single-bump dataset.
+- `demo_channel_selection.ipynb` in `extensions/`: Channel selection workflow with synthetic multivariate data.
+
+### Core changes
+
+- **`temporal_occlusion`**: Added `sample_indices` parameter to allow analysis of specific trials (e.g., misclassified instances) instead of automatic sample selection.
+- **`plot_permutation_importance`**: Fixed y-axis padding with explicit `set_ylim` to remove bar chart offset.
+- **`plot_multi_kernel_summary`**: Updated colormap to match feature stability plot (`['#f0f0f0', '#1f77b4']`).
+
+### Regression module (`interp_rocket_regressor.py`)
+
+- Added `plot_receptive_field_diagram` method for visualizing feature receptive fields.
+- Added `plot_feature_stability` compatibility for cross-validation stability results.
+- Added `aggregate_temporal_occlusion` for class-level occlusion sensitivity analysis.
+
+### Pending updates for version 0.5
+
+- All final demonstration notebooks will be posted.
+- Any issues found by testers of the functions in the Laubach Lab and elsewhere will be addressed.
+- The package is currently judged as production ready and is already being used in research projects and courses.
+- Release 0.5 will finalize all documentation to date on the project.
 
 ## 0.3.0 (2026-03-21)
 - **Permutation importance (PIMP)**: Added `permutation_importance_test()` and `plot_permutation_importance()` implementing the PIMP algorithm (Altmann et al., 2010) for statistically corrected feature importance with p-values. Uses RandomForestClassifier by default, which produces meaningful null distributions for ROCKET features (Ridge coefficients cause all features to appear significant).

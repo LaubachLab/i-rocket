@@ -2416,6 +2416,7 @@ def temporal_occlusion(
     X_test,
     y_test,
     n_samples=5,
+    sample_indices=None,
     window_size=None,
     stride=None,
     feature_mask=None,
@@ -2486,19 +2487,19 @@ def temporal_occlusion(
     if stride is None:
         stride = max(1, window_size // 2)
 
-    # Select samples: one per class, then pad
-    sample_indices = []
-    for cls in classes:
-        cls_idx = np.where(y_test == cls)[0]
-        if len(cls_idx) > 0:
-            sample_indices.append(cls_idx[0])
-    while len(sample_indices) < n_samples:
-        remaining = [i for i in range(len(y_test)) if i not in sample_indices]
-        if remaining:
-            sample_indices.append(remaining[0])
-        else:
-            break
-    sample_indices = sample_indices[:n_samples]
+    if sample_indices is not None:
+        sample_indices = list(sample_indices)
+    else:
+        # Select samples: one per class, then pad
+        sample_indices = []
+        for cls in classes:
+            cls_idx = np.where(y_test == cls)[0]
+            if len(cls_idx) > 0:
+                sample_indices.append(cls_idx[0])
+        while len(sample_indices) < n_samples:
+            remaining = [i for i in range(len(y_test)) if i not in sample_indices]
+            if remaining:
+                sample_indices.append(remaining[0])
 
     # Get the decision function, optionally restricted to feature_mask
     def _decision_function(X_single):

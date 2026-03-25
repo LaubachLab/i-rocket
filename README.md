@@ -99,17 +99,18 @@ i-rocket/
 |   |-- demo_RF_mapping.ipynb               # Receptive field localization with single-bump data
 |   |-- demo_visualization.ipynb            # Comparison of temporal features from DP and I-ROCKET
 |   |-- demo_multivariate.ipynb             # Extension to multichannel data
+|   |-- demo_regression.ipynb               # Time series regression (FloodModeling1 from aeon)
 |   |-- demo_pimp.ipynb                     # Permutation importance (PIMP) on waveform
-|   |-- demo_amee.ipynb                     # AMEE evaluation of saliency maps
-|   |-- demo_tshap_amee.ipynb               # TSHAP + AMEE combined evaluation
-|   |-- demo_channel_selection.ipynb        # Channel selection for multivariate data
 |   |-- benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform
 |   +-- benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
-+-- extensions/
-    |-- kernel_explorer.ipynb               # Interactive kernel/dilation/pooling explorer
-    |-- amee_evaluation.py                  # AMEE explanation evaluation framework
-    |-- tshap_integration.py                # TSHAP bridge for Shapley value attributions
-    +-- channel_selection.py                # Channel selection for multivariate time series
+|-- extensions/
+|   |-- kernel_explorer.ipy                 # Interactive kernel/dilation/pooling explorer
+|   |-- amee_evaluation.py                  # AMEE explanation evaluation framework
+|   |-- tshap_integration.py                # TSHAP bridge for Shapley value attributions
+|   |-- channel_selection.py                # Channel selection for multivariate time series
+|   |-- demo_tshap_amee_bump.ipynb          # TSHAP + AMEE applied to a simple synthetic dataset
+|   |-- demo_tshap_amee_waveform.ipynb      # TSHAP + AMEE applied to the waveform dataset
+|   |-- demo_channel_selection.ipynb        # Channel selection for multivariate data
 ```
 
 ## Quick Start
@@ -157,8 +158,6 @@ print(f"R²: {metrics['r2']:.4f}, RMSE: {metrics['rmse']:.4f}")
 fig, importance = model.plot_temporal_importance(X_test, y_test)
 fig = model.plot_top_kernels(X_test, y_test, n_kernels=5)
 ```
-
-See `examples/demo_regression.ipynb` for a complete tutorial using the FloodModeling1 dataset from aeon.
 
 ## Multichannel Data
 
@@ -316,33 +315,21 @@ The `extensions/` directory contains optional modules that integrate I-ROCKET wi
 
 ### Kernel Explorer
 
-An interactive Jupyter notebook (`extensions/kernel_explorer.ipynb`) for understanding the building blocks of MultiRocket classifiers: the 84 fixed convolutional kernels, dilation, bias thresholding, and the four pooling operators. Uses `ipywidgets` to provide real-time controls:
-
-- **Kernel slider** (0-83): select any of the 84 base kernels
-- **Dilation slider** (1-16): stretch the kernel across different timescales
-- **Signal dropdown**: Gaussian bump, two peaks, or oscillatory test signals
-- **Bias slider**: manually adjust the firing threshold
-- **Auto bias checkbox**: use the median convolution output (default)
-
-Four panels update interactively: the dilated kernel weight pattern, the kernel overlaid on the signal at peak response, the full convolution output with bias threshold, and the four pooling operator values (PPV, MPV, MIPV, LSPV). Requires `ipywidgets` (`pip install ipywidgets`).
+A stand-alone Python program (`extensions/kernel_explorer.py`) for understanding the building blocks of MultiRocket classifiers: the 84 fixed convolutional kernels, dilation, bias thresholding, and the four pooling operators.
 
 ### AMEE Evaluation
 
 `extensions/amee_evaluation.py` implements the AMEE framework (Nguyen et al., 2024) for quantitative evaluation and ranking of saliency-based explanation methods. It evaluates how informative a saliency map is by perturbing the most important time regions and measuring the resulting accuracy drop. A larger drop indicates a more informative explanation. The module provides:
 
-- Saliency map extraction from I-ROCKET's temporal importance and occlusion tools
+- Saliency map extraction from I-ROCKET's measures
 - Random and inverse baselines for comparison
 - Four perturbation strategies (zero, mean, noise, inverse)
 - Full AMEE evaluation across multiple explainers and perturbation methods
 - Ranking by mean AUC of accuracy drop curves
 
-See `examples/demo_amee.ipynb` for a demonstration on the three-bumps dataset.
-
 ### TSHAP Integration
 
 `extensions/tshap_integration.py` bridges I-ROCKET with the TSHAP package (Le Nguyen and Ifrim, 2025) for instance-level Shapley value attributions. TSHAP provides exact SHAP values by grouping timepoints into sliding windows, keeping Shapley computation tractable for time series. The module wraps I-ROCKET's prediction pipeline into the format TSHAP expects and provides utilities for comparing TSHAP attributions with I-ROCKET's built-in interpretability tools. Requires `tshap` (`pip install tshap`).
-
-See `examples/demo_tshap_amee.ipynb` for a combined TSHAP + AMEE evaluation comparing I-ROCKET's analytical temporal importance with TSHAP's game-theoretic attributions.
 
 ### Channel Selection for Multivariate Data
 
@@ -360,8 +347,6 @@ X_test_flat = flatten_channels(X_test, selected)
 model = InterpRocket()
 model.fit(X_train_flat, y_train)
 ```
-
-See `examples/demo_channel_selection.ipynb` for a demonstration with synthetic multichannel data including accuracy comparisons and temporal importance mapping back to original channels.
 
 ## Diagnostics
 

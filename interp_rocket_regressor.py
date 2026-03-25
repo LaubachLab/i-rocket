@@ -35,6 +35,15 @@ USAGE:
     model.plot_feature_distributions(X_test, y_test)
     model.plot_kernel_properties()
 
+    # Receptive field diagram
+    from interp_rocket_regressor import plot_receptive_field_diagram
+    plot_receptive_field_diagram(model, X_test, y_test, n_kernels=5)
+
+    # Aggregate temporal occlusion
+    from interp_rocket_regressor import aggregate_occlusion, plot_aggregate_occlusion
+    agg = aggregate_occlusion(model, X_test, y_test)
+    plot_aggregate_occlusion(agg)
+
     # Recursive feature elimination
     from interp_rocket_regressor import recursive_feature_elimination
     from interp_rocket_regressor import plot_elimination_curve
@@ -57,7 +66,6 @@ __version__ = "0.1.0"
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 from sklearn.linear_model import RidgeCV
 from sklearn.model_selection import RepeatedKFold
 from sklearn.preprocessing import StandardScaler
@@ -77,6 +85,7 @@ try:
     from interp_rocket import (
         _generate_base_kernels, _fit_dilations, _quantiles,
         _fit_biases, _transform, compute_activation_map, kneedle,
+        plot_feature_stability, plot_kernel_similarity,
     )
 except ModuleNotFoundError:
     import sys
@@ -89,6 +98,7 @@ except ModuleNotFoundError:
     from interp_rocket import (
         _generate_base_kernels, _fit_dilations, _quantiles,
         _fit_biases, _transform, compute_activation_map, kneedle,
+        plot_feature_stability, plot_kernel_similarity,
     )
 
 # ============================================================================
@@ -878,11 +888,11 @@ class InterpRocketRegressor(BaseEstimator, RegressorMixin):
             ax.set_title(
                 f"K{ki} d={dil} {pooling} ({rep})\n"
                 f"imp={imp:.3f}  {r_label}",
-                fontsize=8,
+                fontsize=9,
             )
-            ax.set_xlabel(f"{pooling} (scaled)", fontsize=7)
-            ax.set_ylabel("Target", fontsize=7)
-            ax.tick_params(labelsize=6)
+            ax.set_xlabel(f"{pooling} (scaled)", fontsize=8)
+            ax.set_ylabel("Target", fontsize=8)
+            ax.tick_params(labelsize=7)
 
         # Hide unused axes
         for j in range(i + 1, len(axes)):
@@ -1601,7 +1611,7 @@ def plot_occlusion(occ_results, figsize=(12, None)):
 
         ax2 = ax.twinx()
         ax2.plot(t, sensitivity, color="#ff7f0e", linewidth=1.2, alpha=0.85)
-        ax2.set_ylabel("Sensitivity", fontsize=8, color="#ff7f0e")
+        ax2.set_ylabel("Sensitivity", fontsize=9, color="#ff7f0e")
 
         if row == 0:
             ax.set_title(
@@ -1613,6 +1623,421 @@ def plot_occlusion(occ_results, figsize=(12, None)):
             ax.set_xlabel("Timepoint")
 
     plt.tight_layout()
+    return fig
+
+
+# ============================================================================
+# SECTION 7A: AGGREGATE TEMPORAL OCCLUSION (Regression)
+# ============================================================================
+
+def aggregate_occlusion(
+    model,
+    X_test,
+    y_test,
+    n_samples=None,
+    window_size=None,
+    stride=None,
+    feature_mask=None,
+    verbose=True,
+):
+    """
+    Run temporal occlusion over many samples and aggregate the results
+    into a single sensitivity profile.
+
+    This wraps temporal_occlusion() with a larger sample count (default:
+    all test instances) and returns summary statistics at each timepoint:
+    mean, standard deviation, and median sensitivity, plus the per-sample
+    sensitivity matrix for downstream analysis.
+
+    Parameters
+    ----------
+    model : InterpRocketRegressor
+        A fitted model.
+    X_test : ndarray, shape (n_instances, n_timepoints)
+    y_test : array-like, continuous target
+    n_samples : int or None
+        Number of samples to analyze. None uses all instances.
+    window_size : int or None
+        Occlusion window width. None lets temporal_occlusion choose
+        a default (~5% of the series length).
+    stride : int or None
+        Step between window positions. None lets temporal_occlusion
+        choose a default (window_size // 2).
+    feature_mask : array-like of int, optional
+        If provided, zero out non-selected features before prediction.
+    verbose : bool
+
+    Returns
+    -------
+    results : dict with keys:
+        'mean_sensitivity'  : ndarray, shape (n_timepoints,)
+        'std_sensitivity'   : ndarray, shape (n_timepoints,)
+        'median_sensitivity': ndarray, shape (n_timepoints,)
+        'sensitivity_matrix': ndarray, shape (n_samples, n_timepoints)
+        'mean_signal'       : ndarray, shape (n_timepoints,)
+        'mean_abs_error'    : float, mean |true - pred| across samples
+        'window_size'       : int
+        'stride'            : int
+        'n_samples'         : int
+    """
+    X_test = np.asarray(X_test, dtype=np.float32)
+    y_test = np.asarray(y_test, dtype=np.float64)
+    n_instances = X_test.shape[0]
+
+    if n_samples is None:
+        n_samples = n_instances
+
+    if verbose:
+        print(f"Aggregate occlusion: {n_samples} of {n_instances} samples")
+
+    occ = temporal_occlusion(
+        model, X_test, y_test,
+        n_samples=n_samples,
+        window_size=window_size,
+        stride=stride,
+        feature_mask=feature_mask,
+        verbose=verbose,
+    )
+
+    sens_matrix = np.array(occ["sensitivities"])   # (n, n_timepoints)
+    sig_matrix = np.array(occ["signals"])
+
+    mean_sens = sens_matrix.mean(axis=0)
+    std_sens = sens_matrix.std(axis=0)
+    median_sens = np.median(sens_matrix, axis=0)
+    mean_signal = sig_matrix.mean(axis=0)
+
+    true_arr = np.array(occ["true_values"])
+    pred_arr = np.array(occ["predicted_values"])
+    mean_abs_error = float(np.mean(np.abs(true_arr - pred_arr)))
+
+    if verbose:
+        peak_t = int(np.argmax(mean_sens))
+        print(f"  Peak mean sensitivity at t={peak_t} "
+              f"(value={mean_sens[peak_t]:.4f})")
+        print(f"  Mean |error| across samples: {mean_abs_error:.4f}")
+
+    return {
+        "mean_sensitivity": mean_sens,
+        "std_sensitivity": std_sens,
+        "median_sensitivity": median_sens,
+        "sensitivity_matrix": sens_matrix,
+        "mean_signal": mean_signal,
+        "mean_abs_error": mean_abs_error,
+        "window_size": occ["window_size"],
+        "stride": occ["stride"],
+        "n_samples": len(occ["sensitivities"]),
+    }
+
+
+def plot_aggregate_occlusion(agg_results, figsize=(14, 6), ci="std"):
+    """
+    Plot the aggregated temporal occlusion sensitivity profile.
+
+    Top panel:  mean time series (gray).
+    Bottom panel: mean sensitivity curve with a shaded uncertainty
+        band, plus the median overlaid as a dashed line.
+
+    Parameters
+    ----------
+    agg_results : dict
+        Output from aggregate_occlusion().
+    figsize : tuple
+    ci : str, default='std'
+        Uncertainty band style:
+        'std'  - mean +/- 1 standard deviation
+        'sem'  - mean +/- 1 standard error of the mean
+        'none' - no band
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    mean_sens = agg_results["mean_sensitivity"]
+    std_sens = agg_results["std_sensitivity"]
+    median_sens = agg_results["median_sensitivity"]
+    mean_signal = agg_results["mean_signal"]
+    n_samples = agg_results["n_samples"]
+    window_size = agg_results["window_size"]
+    stride = agg_results["stride"]
+
+    n_timepoints = len(mean_sens)
+    t = np.arange(n_timepoints)
+
+    fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
+
+    # -- Top panel: mean signal --
+    ax = axes[0]
+    ax.plot(t, mean_signal, color="#7f7f7f", linewidth=1.0)
+    ax.set_ylabel("Amplitude")
+    ax.set_title("Mean Signal", fontsize=10)
+    ax.grid(True, alpha=0.15)
+
+    # -- Bottom panel: aggregate sensitivity --
+    ax = axes[1]
+    ax.plot(t, mean_sens, color="#ff7f0e", linewidth=1.5, label="Mean")
+    ax.plot(t, median_sens, color="#d62728", linewidth=1.0, linestyle="--",
+            alpha=0.7, label="Median")
+
+    if ci == "std":
+        band = std_sens
+        band_label = r"$\pm$1 SD"
+    elif ci == "sem":
+        band = std_sens / np.sqrt(max(1, n_samples))
+        band_label = r"$\pm$1 SEM"
+    else:
+        band = None
+
+    if band is not None:
+        ax.fill_between(
+            t, mean_sens - band, mean_sens + band,
+            alpha=0.2, color="#ff7f0e", label=band_label,
+        )
+
+    ax.set_xlabel("Timepoint")
+    ax.set_ylabel("Sensitivity")
+    ax.set_title(
+        f"Aggregate Occlusion Sensitivity "
+        f"(n={n_samples}, window={window_size}, stride={stride})",
+        fontsize=10,
+    )
+    ax.set_ylim(bottom=0)
+    ax.legend(fontsize=9, loc="best")
+    ax.grid(True, alpha=0.15)
+
+    fig.suptitle("Aggregate Temporal Occlusion (Regression)",
+                 fontsize=12, y=1.01)
+    plt.tight_layout()
+    return fig
+
+
+# ============================================================================
+# SECTION 7B: RECEPTIVE FIELD DIAGRAM (Regression)
+# ============================================================================
+
+def plot_receptive_field_diagram(
+    model,
+    X,
+    y,
+    n_kernels=5,
+    n_examples=5,
+    figsize=None,
+    feature_mask=None,
+    cmap="RdBu_r",
+):
+    """
+    Visualize the temporal receptive fields of top-ranked kernels for
+    regression, showing where each kernel ``sees'' in the input series
+    and how its activation correlates with the continuous target.
+
+    The diagram has two panels:
+
+    Top panel - Example time series from the dataset, drawn in gray
+        with the mean signal overlaid in black, providing spatial
+        context for the receptive field spans below.
+
+    Bottom panel - Receptive field spans for the top-n kernels, drawn
+        as horizontal bars whose left edge is the median activation
+        center and whose width equals the kernel's receptive field
+        (1 + 8 * dilation). Bars are colored by the sign and magnitude
+        of the Pearson correlation between that kernel's per-instance
+        activation and the target variable: strong positive correlation
+        is red, strong negative is blue, near-zero is white.
+
+    Parameters
+    ----------
+    model : InterpRocketRegressor
+        A fitted model.
+    X : ndarray, shape (n_instances, n_timepoints)
+        Data to compute activation maps on (typically the test set).
+    y : array-like, shape (n_instances,)
+        Continuous target values corresponding to X.
+    n_kernels : int, default=5
+        Number of top kernels to display.
+    n_examples : int, default=5
+        Number of example time series to overlay in the top panel.
+    figsize : tuple, optional
+        Figure size. Default scales with n_kernels.
+    feature_mask : array-like of int, optional
+        If provided, restrict to these feature indices.
+    cmap : str, default='RdBu_r'
+        Matplotlib colormap name for the receptive field bars.
+        A diverging map works best (correlation range is [-1, 1]).
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    from matplotlib.patches import Rectangle
+    from matplotlib.colors import Normalize
+    from matplotlib.cm import ScalarMappable
+
+    X = np.asarray(X, dtype=np.float32)
+    y = np.asarray(y, dtype=np.float64)
+    n_instances, n_timepoints = X.shape
+
+    # -- Get top unique kernels (deduplicated by kernel+dilation+rep) --
+    if feature_mask is not None:
+        n_candidates = len(feature_mask)
+    else:
+        n_candidates = n_kernels * 4
+    top_features = model.get_top_features(
+        n=n_candidates, feature_mask=feature_mask
+    )
+
+    seen = set()
+    unique_kernels = []
+    for f in top_features:
+        key = (f["representation"], f["kernel_index"], f["dilation"])
+        if key not in seen:
+            seen.add(key)
+            unique_kernels.append(f)
+        if len(unique_kernels) >= n_kernels:
+            break
+
+    n_kernels = len(unique_kernels)
+
+    # -- Compute per-kernel: median activation center and target correlation --
+    kernel_stats = []
+    for kinfo in unique_kernels:
+        ki = kinfo["kernel_index"]
+        dil = kinfo["dilation"]
+        rep = kinfo["representation"]
+        bias = kinfo["bias"]
+        rf = kinfo["receptive_field"]
+
+        centers = []
+        mean_acts = []
+        for ex_idx in range(n_instances):
+            if rep == "diff":
+                x = np.diff(X[ex_idx]).astype(np.float32)
+            else:
+                x = X[ex_idx]
+
+            conv_out, act, time_idx = compute_activation_map(
+                x, ki, np.int32(dil), np.float32(bias)
+            )
+
+            if len(time_idx) > 0:
+                center = float(np.mean(time_idx))
+                if rep == "diff":
+                    center = min(center + 1, n_timepoints - 1)
+                centers.append(center)
+                mean_acts.append(float(np.mean(conv_out)))
+            else:
+                centers.append(n_timepoints / 2.0)
+                mean_acts.append(0.0)
+
+        median_center = float(np.median(centers))
+        mean_acts = np.array(mean_acts)
+        if np.std(mean_acts) > 0 and len(mean_acts) > 2:
+            corr = float(np.corrcoef(mean_acts, y)[0, 1])
+        else:
+            corr = 0.0
+
+        kernel_stats.append({
+            "kinfo": kinfo,
+            "median_center": median_center,
+            "rf": rf,
+            "corr": corr,
+        })
+
+    # -- Figure layout --
+    if figsize is None:
+        figsize = (14, 3.5 + 1.2 * n_kernels)
+
+    fig, axes = plt.subplots(
+        2, 1, figsize=figsize, sharex=True,
+        gridspec_kw={"height_ratios": [1, max(1, n_kernels * 0.6)]},
+    )
+    ax_ts = axes[0]
+    ax_rf = axes[1]
+
+    # -- Top panel: example time series in gray with mean overlay --
+    sorted_by_target = np.argsort(y)
+    step = max(1, len(sorted_by_target) // n_examples)
+    example_indices = sorted_by_target[::step][:n_examples]
+
+    for idx in example_indices:
+        ax_ts.plot(
+            range(n_timepoints), X[idx], color="#b0b0b0",
+            linewidth=0.6, alpha=0.5,
+        )
+    mean_signal = X.mean(axis=0)
+    ax_ts.plot(range(n_timepoints), mean_signal, color="#333333",
+               linewidth=1.2, label="Mean signal")
+
+    ax_ts.set_ylabel("Amplitude", fontsize=10)
+    ax_ts.set_title("Example Series with Mean Overlay", fontsize=11)
+    ax_ts.legend(fontsize=9, loc="upper right")
+    ax_ts.grid(True, alpha=0.15)
+
+    # -- Bottom panel: receptive field bars --
+    rf_cmap = plt.get_cmap(cmap)
+    corr_norm = Normalize(vmin=-1.0, vmax=1.0)
+
+    y_positions = list(range(n_kernels))
+    bar_height = 0.7
+
+    for row, ks in enumerate(kernel_stats):
+        kinfo = ks["kinfo"]
+        rf = ks["rf"]
+        center = ks["median_center"]
+        corr = ks["corr"]
+
+        # Bar left edge: center the RF around the median activation center
+        left = center - rf / 2.0
+        left = max(0, min(left, n_timepoints - rf))
+
+        color = rf_cmap(corr_norm(corr))
+        rect = Rectangle(
+            (left, row - bar_height / 2), rf, bar_height,
+            facecolor=color, edgecolor="#333333", linewidth=0.8,
+        )
+        ax_rf.add_patch(rect)
+
+        # Label inside the bar
+        ki = kinfo["kernel_index"]
+        dil = kinfo["dilation"]
+        rep = kinfo["representation"]
+        pooling = kinfo["pooling_op"]
+        imp = kinfo["importance"]
+        label = f"K{ki} d={dil} {pooling} ({rep}) r={corr:+.2f}"
+
+        # Choose text color for legibility against the bar fill
+        text_color = "white" if abs(corr) > 0.45 else "#333333"
+        ax_rf.text(
+            left + rf / 2, row, label,
+            ha="center", va="center", fontsize=9,
+            color=text_color, fontweight="bold",
+        )
+
+    ax_rf.set_ylim(-0.6, n_kernels - 0.4)
+    ax_rf.set_xlim(0, n_timepoints)
+    ax_rf.set_yticks(y_positions)
+    ax_rf.set_yticklabels(
+        [f"#{i+1} (imp={kernel_stats[i]['kinfo']['importance']:.3f})"
+         for i in range(n_kernels)],
+        fontsize=9,
+    )
+    ax_rf.set_xlabel("Timepoint", fontsize=10)
+    ax_rf.set_ylabel("Kernel rank", fontsize=10)
+    ax_rf.set_title(
+        "Receptive Field Spans (colored by target correlation)", fontsize=11
+    )
+    ax_rf.grid(True, axis="x", alpha=0.15)
+    ax_rf.invert_yaxis()
+
+    # Colorbar for correlation - use inset to avoid tight_layout conflicts
+    sm_rf = ScalarMappable(cmap=rf_cmap, norm=corr_norm)
+    sm_rf.set_array([])
+    cbar_rf = fig.colorbar(sm_rf, ax=ax_rf, fraction=0.02, pad=0.015,
+                           aspect=30)
+    cbar_rf.set_label("Pearson r with target", fontsize=9)
+    cbar_rf.ax.tick_params(labelsize=8)
+
+    fig.suptitle("Receptive Field Diagram (Regression)", fontsize=13, y=1.01)
+    fig.tight_layout(rect=[0, 0, 1, 0.98])
     return fig
 
 
@@ -1836,4 +2261,8 @@ if __name__ == "__main__":
     fig4 = model.plot_kernel_properties()
     fig4.savefig("regression_properties.png", dpi=150, bbox_inches="tight")
 
-    print("Done. Saved 4 visualization figures.")
+    fig5 = plot_receptive_field_diagram(model, X_test, y_test, n_kernels=5)
+    fig5.savefig("regression_receptive_fields.png", dpi=150,
+                 bbox_inches="tight")
+
+    print("Done. Saved 5 visualization figures.")
