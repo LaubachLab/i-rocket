@@ -1,82 +1,128 @@
 """
-interp_rocket.py — Interpretable ROCKET for Time Series Classification
+interp_rocket.py - Interpretable ROCKET for Time Series Classification
 
-A standalone, fully transparent reimplementation of MultiRocket (Tan et al., 2022)
-with complete kernel-level interpretability, recursive feature elimination (RFE),
-model-agnostic temporal occlusion analysis, and repeated k-fold cross-validation.
+A standalone, fully transparent reimplementation of MultiRocket (Tan et al.,
+2022) with complete kernel-level interpretability. Designed for scientific
+applications where understanding why a classifier makes its decisions is as
+important as the accuracy.
 
-Inspired by the design of msROCKET (Lundy and O'Toole, 2021), which was based on
-the vanilla ROCKET classifier. Designed for scientific applications where understanding
-*why* a classifier makes its decisions is as important as the accuracy.
+Inspired by the transparent parameter storage in msROCKET (Lundy and O'Toole,
+2021), which was based on the vanilla ROCKET classifier.
 
 WHAT THIS DOES:
-    MultiRocket uses 84 deterministic base kernels (from MiniRocket) applied at
-    multiple dilations to both the raw signal and its first-order difference.
-    Four pooling operators (PPV, MPV, MIPV, LSPV) extract features from each
-    convolution output. A linear classifier (Ridge) trains on these features.
+    MultiRocket uses 84 deterministic base kernels (from MiniRocket) applied
+    at multiple dilations to both the raw signal and its first-order
+    difference. Four pooling operators (PPV, MPV, MIPV, LSPV) extract
+    features from each convolution output. A linear classifier (Ridge) trains
+    on these features.
 
-    Unlike sktime/aeon's implementations, every parameter is stored in plain
+    Unlike sktime/aeon implementations, every parameter is stored in plain
     numpy arrays with documented indexing, making it possible to:
-    1. Trace any feature back to its kernel, dilation, pooling op, and signal type
+    1. Trace any feature back to its kernel, dilation, pooling op, and
+       signal type via decode_feature_index()
     2. Visualize what each important kernel detects in a time series
     3. Map classifier importance to temporal regions of the input
-    4. Identify minimal discriminative feature sets via recursive feature elimination
-    5. Assess temporal sensitivity via model-agnostic occlusion
+    4. Identify robust features via cross-validation stability analysis
+    5. Test feature significance via permutation importance (PIMP)
+    6. Decompose feature contributions as redundant, synergistic, or
+       independent using information-theoretic methods
+    7. Assess temporal sensitivity via model-agnostic occlusion
 
 ARCHITECTURE:
-    84 base kernels × D dilations × 2 representations × 4 pooling ops = features
-    where D depends on series length (D = num_kernels // 84 dilations per kernel,
-    with the distribution across dilations fitted to the data).
+    84 base kernels x D dilations x 2 representations x 4 pooling ops
+    where D depends on series length (controlled by max_dilations_per_kernel,
+    default 16). The distribution across dilations is fitted to the data.
 
-KEY DIFFERENCES FROM SKTIME:
+FEATURE SELECTION:
+    Feature stability analysis (FSA) is the recommended method. It
+    identifies features that are consistently ranked as important across
+    cross-validation folds (Meinshausen and Buhlmann, 2010; Saeys et al.,
+    2008). Permutation importance (PIMP) provides an independent statistical
+    test using RandomForest to confirm that feature importance exceeds
+    chance (Altmann et al., 2010). Recursive feature elimination (RFE) is
+    available but not recommended as primary method due to sensitivity to
+    random seed and data split.
+
+INTERPRETABILITY TOOLS:
+    - Temporal importance profiles (differential activation method)
+    - Receptive field diagrams (feature RF at peak discriminative location)
+    - Class-mean activation maps (kernel response on class-averaged signals)
+    - Aggregate activation (importance-weighted sum with differential)
+    - Multi-kernel summary (binary activation heatmap across features)
+    - Temporal occlusion sensitivity (per-trial and aggregate)
+    - Confusion-conditioned activation maps (correct vs. misclassified)
+    - Information decomposition (redundant/synergistic/independent)
+    - Kernel similarity network (correlation structure among features)
+    - Feature distribution analysis (per-class histograms)
+
+COLOR PALETTE:
+    All plotting functions use a consistent tab10 hex palette defined at
+    module level (TAB10, POOLING_COLORS, INFO_COLORS).
+
+KEY DIFFERENCES FROM SKTIME/AEON:
     - All kernel weights, dilations, biases stored as accessible numpy arrays
-    - Complete feature→kernel→timepoint traceability
-    - Visualization pipeline included
-    - Recursive feature elimination with re-ranking (Guyon et al., 2002;
-      re-ranking per Uribarri et al., 2024)
-    - Repeated stratified k-fold cross-validation with multiple metrics
+    - Complete feature to kernel to timepoint traceability
+    - Integrated visualization and analysis suite
+    - Feature stability analysis for robust feature selection
+    - Permutation importance with statistical testing (PIMP)
+    - Information-theoretic feature decomposition
     - Class balancing via random oversampling for imbalanced data
-    - NumPy 2.x compatible (no np.NINF)
+    - NumPy 2.x compatible
     - Single-file, no framework dependencies beyond numpy/numba/sklearn/matplotlib
 
+EXTENSIONS (in extensions/ directory):
+    - AMEE evaluation: perturbation-based saliency map ranking
+    - TSHAP integration: instance-level Shapley value attributions
+    - Channel selection: classifier-agnostic multivariate channel selection
+    - Kernel explorer: interactive tool for exploring kernels and pooling
+
 REFERENCES:
-    Tan, C. W., Dempster, A., Bergmeir, C., & Webb, G. I. (2022). MultiRocket:
-    multiple pooling operators and transformations for fast and effective time
-    series classification: CW Tan. Data Mining and Knowledge Discovery, 36(5),
-    1623-1646.
+    Altmann, A., Tolosi, L., Sander, O., & Lengauer, T. (2010). Permutation
+    importance: a corrected feature importance measure. Bioinformatics,
+    26(10), 1340-1347.
+
+    Meinshausen, N. & Buhlmann, P. (2010). Stability selection. Journal of
+    the Royal Statistical Society: Series B, 72(4), 417-473.
+
+    Narayanan, N. S., Kimchi, E. Y., & Laubach, M. (2005). Redundancy and
+    synergy of neuronal ensembles in motor cortex. Journal of Neuroscience,
+    25(17), 4207-4216.
+
+    Tan, C. W., Dempster, A., Bergmeir, C., & Webb, G. I. (2022).
+    MultiRocket: multiple pooling operators and transformations for fast and
+    effective time series classification. Data Mining and Knowledge
+    Discovery, 36(5), 1623-1646.
 
     Lundy, C., & O'Toole, J. M. (2021). Random convolution kernels with
     multi-scale decomposition for preterm EEG inter-burst detection. In 2021
-    29th European Signal Processing Conference (EUSIPCO) (pp. 1182-1186). IEEE.
+    29th European Signal Processing Conference (EUSIPCO) (pp. 1182-1186).
 
-    Guyon, I., Weston, J., Barnhill, S., & Vapnik, V. (2002). Gene selection
-    for cancer classification using support vector machines. Machine Learning,
-    46(1-3), 389-422.
-
-    Uribarri, G., Barone, F., Ansuini, A., & Fransén, E. (2024). Detach-ROCKET:
-    sequential feature selection for time series classification with random
-    convolutional kernels. Data Mining and Knowledge Discovery, 38(6), 3922-3947.
+    Uribarri, G., Barone, F., Ansuini, A., & Fransen, E. (2024).
+    Detach-ROCKET: sequential feature selection for time series
+    classification with random convolutional kernels. Data Mining and
+    Knowledge Discovery, 38(6), 3922-3947.
 
 USAGE:
-    from interp_rocket import InterpRocket, cross_validate
+    import interp_rocket as IR
 
-    model = InterpRocket(max_dilations_per_kernel=40, class_weight='balanced')
+    model = IR.InterpRocket(max_dilations_per_kernel=16)
     model.fit(X_train, y_train)
     metrics = model.evaluate(X_test, y_test)
 
-    # Visualization
-    model.plot_top_kernels(X_test, y_test, n_kernels=5)
-    model.plot_temporal_importance(X_test, y_test)
-    model.plot_feature_distributions(X_test, y_test)
-    model.plot_kernel_properties()
+    # Feature stability analysis
+    stability = IR.cv_feature_stability(X_train, y_train)
+    stable = IR.get_stable_features(stability, threshold=0.8)
 
-    # Recursive feature elimination
-    from interp_rocket import recursive_feature_elimination, plot_elimination_curve
-    rfe = recursive_feature_elimination(model, X_train, y_train, X_test, y_test)
-    plot_elimination_curve(rfe)
+    # Visualization (constrained by stable features)
+    model.plot_temporal_importance(X_test, y_test, feature_mask=stable)
+    IR.plot_receptive_field_diagram(model, X_test, y_test, feature_mask=stable)
+
+    # Permutation importance
+    pimp = IR.permutation_importance_test(model, X_train, y_train)
+    IR.plot_permutation_importance(pimp, model=model)
 
     # Cross-validation
-    results = cross_validate(X, y, n_repeats=10, n_folds=10, n_jobs=-2)
+    results = IR.cross_validate(X, y, n_repeats=10, n_folds=10, n_jobs=-2)
 
 REQUIREMENTS:
     numpy, numba (>=0.50), scikit-learn, matplotlib
@@ -713,7 +759,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
 
     def __init__(
         self,
-        max_dilations_per_kernel=32,
+        max_dilations_per_kernel=16,  # suggested for use with I-ROCKET
         num_features=10000,
         random_state=0,
         alpha_range=None,

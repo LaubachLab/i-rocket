@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5 (2026-03-27)
+
+- All demonstration notebooks in `examples/` and `extensions/` have been finalized and posted.
+- The default for `max_dilations_per_kernel` was changed from 32 to 16 in `InterpRocket`. Extensive testing across the benchmark datasets showed that 16 dilations produces sharper temporal importance profiles and more interpretable receptive field maps, with minimal effect on classification accuracy. The previous default of 32 often produces stable features with receptive fields spanning the entire series, which dilutes temporal localization. Users can set any value via the `max_dilations_per_kernel` keyword argument.
+- The headers of `interp_rocket.py` and `interp_rocket_regressor.py` were revised to reflect all changes from v0.3 through v0.5, including updated feature selection recommendations, interpretability tool listings, and usage examples.
+- `interp_rocket_regressor` was updated with all recent changes to `interp_rocket`. The regression module is provided as a demonstration of the framework's capabilities. It has received less testing than the classifier module, and the simple `RidgeCV` model may be insufficient for scientific applications where non-linear target relationships are expected.
+- With this release, I-ROCKET is considered ready for practical use in research and teaching. The core classifier, feature selection methods, and visualization tools have been tested across multiple benchmark datasets and are in active use in the Laubach Lab. Bug reports and feature requests can be submitted via GitHub Issues.
+
 ## v0.4 (2026-03-25)
 
 ### Extensions (new directory: `extensions/`)
