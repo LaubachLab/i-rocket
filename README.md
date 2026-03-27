@@ -98,7 +98,6 @@ i-rocket/
 |   |-- demo_three_bumps.ipynb              # Synthetic data used for package development
 |   |-- demo_RF_mapping.ipynb               # Receptive field localization with single-bump data
 |   |-- demo_visualization.ipynb            # Comparison of temporal features from DP and I-ROCKET
-|   |-- demo_multivariate.ipynb             # Extension to multichannel data
 |   |-- demo_pimp.ipynb                     # Permutation importance (PIMP) on waveform
 |   |-- benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform
 |   +-- benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
@@ -179,8 +178,6 @@ train_features = np.hstack([m.transform(X_train[:, ch, :])
 test_features = np.hstack([m.transform(X_test[:, ch, :])
                            for ch, m in enumerate(models)])
 ```
-
-See `examples/demo_multivariate.ipynb` for a complete tutorial including per-channel importance analysis and cross-validation.
 
 ## Alternative Classifiers
 
