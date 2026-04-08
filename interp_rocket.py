@@ -1169,22 +1169,23 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
     # ====================================================================
 
     def plot_top_kernels(
-        self, X, y, n_kernels=None, n_examples=3, figsize=None, feature_mask=None
+        self, X, y, n_kernels=None, n_examples=3, figsize=None,
+        feature_mask=None, show_difference=False, colors=None,
     ):
         """
-        Visualize the top-n most important kernels: their weight patterns,
-        per-class activation rates, and the differential activation that
-        drives classification.
+        Visualize the top-n most important kernels: their weight patterns
+        and per-class activation rates.
 
         Layout: one row per kernel.
             Column 0: kernel weight pattern (bar chart at dilated positions).
             Columns 1..n_classes: per-class activation rate with example
             signal traces in gray. Each colored line shows the fraction of
             examples in that class where the kernel fires at each timepoint.
-            Last column: differential activation -- the max minus min
-            activation rate across classes at each timepoint. Peaks in
-            this curve indicate WHERE the kernel discriminates between
-            classes, not just where it fires.
+
+        When show_difference=True, an additional final column shows the
+        differential activation (max minus min activation rate across
+        classes at each timepoint). Peaks in this curve indicate WHERE
+        the kernel discriminates between classes, not just where it fires.
 
         Parameters
         ----------
@@ -1199,8 +1200,14 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
         figsize : tuple, optional
         feature_mask : array-like of int, optional
             If provided, only these feature indices are eligible for ranking.
-            Typically the surviving indices from RFE:
-                rfe['surviving_indices'][-1]
+            Typically the surviving indices from FSA or RFE.
+        show_difference : bool, default=False
+            If True, add a final column showing the differential activation
+            (max minus min across classes) at each timepoint. Useful for
+            identifying where the kernel discriminates between classes.
+        colors : list of str, optional
+            Colors for per-class activation rate lines, one per class.
+            Defaults to TAB10[:n_classes].
 
         Returns
         -------
@@ -1228,7 +1235,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
 
         # Deduplicate by (kernel_index, dilation, representation) when
         # browsing the full model. When a feature_mask is provided (e.g.,
-        # RFE survivors), show every feature — the user curated the set
+        # RFE survivors), show every feature -- the user curated the set
         # and different pooling ops from the same kernel carry distinct
         # information.
         if feature_mask is not None:
@@ -1245,19 +1252,27 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                     break
         n_kernels = len(unique_kernels)
 
-        # Layout: kernel weights | class 0 | class 1 | ... | differential
-        n_cols = 1 + n_classes + 1
+        # Layout: kernel weights | class 0 | class 1 | ... | [differential]
+        n_cols = 1 + n_classes
+        width_ratios = [1] + [3] * n_classes
+        if show_difference:
+            n_cols += 1
+            width_ratios.append(3)
+
         if figsize is None:
             figsize = (4.5 * n_cols, 3.5 * n_kernels)
 
         # Class-specific colors for activation rate lines
-        class_colors = [TAB10[i] for i in range(n_classes)]
+        if colors is not None:
+            class_colors = list(colors)
+        else:
+            class_colors = [TAB10[i] for i in range(n_classes)]
 
         fig, axes = plt.subplots(
             n_kernels,
             n_cols,
             figsize=figsize,
-            gridspec_kw={"width_ratios": [1] + [3] * n_classes + [3]},
+            gridspec_kw={"width_ratios": width_ratios},
         )
         if n_kernels == 1:
             axes = axes.reshape(1, -1)
@@ -1274,12 +1289,11 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
             ax = axes[row, 0]
             weights = kinfo["kernel_weights"]
             positions = np.arange(9) * dil
-            colors = "#7f7f7f"
             ax.bar(
                 positions,
                 weights,
                 width=max(dil * 0.6, 0.6),
-                color=colors,
+                color="#7f7f7f",
                 edgecolor="#2c2c2c",
                 linewidth=0.5,
             )
@@ -1345,7 +1359,7 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                     linewidth=1.5,
                     alpha=0.85,
                 )
-                ax2.set_ylim(0, 1) #-0.05, 1.05)
+                ax2.set_ylim(0, 1)
                 if cls_idx == n_classes - 1:
                     ax2.set_ylabel("Activation rate", fontsize=8)
                 else:
@@ -1356,38 +1370,42 @@ class InterpRocket(BaseEstimator, ClassifierMixin):
                 if cls_idx == 0:
                     ax.set_ylabel("Amplitude")
 
-            # --- Last column: Differential activation ---
-            ax_diff = axes[row, -1]
-            class_act_array = np.array(class_act_rates)  # (n_classes, n_timepoints)
-            diff_rate = np.max(class_act_array, axis=0) - np.min(
-                class_act_array, axis=0
-            )
-
-            ax_diff.plot(range(n_timepoints), diff_rate, color="#2c2c2c", linewidth=1.5)
-            ax_diff.set_xlabel("Timepoint")
-            if row == 0:
-                ax_diff.set_title(
-                    "Differential\n(max - min across classes)", fontsize=9
+            # --- Optional last column: Differential activation ---
+            if show_difference:
+                ax_diff = axes[row, -1]
+                class_act_array = np.array(class_act_rates)
+                diff_rate = np.max(class_act_array, axis=0) - np.min(
+                    class_act_array, axis=0
                 )
-            else:
-                ax_diff.set_title("Differential", fontsize=9)
-            ax_diff.set_ylabel("Delta act. rate", fontsize=8)
 
-            # Also overlay per-class lines lightly for reference
-            for cls_idx, cls in enumerate(classes):
                 ax_diff.plot(
-                    range(n_timepoints),
-                    class_act_rates[cls_idx],
-                    color=class_colors[cls_idx],
-                    linewidth=1.5,
-                    alpha=0.3,
-                    label=f"Class {cls}" if row == 0 else None,
+                    range(n_timepoints), diff_rate, color="#2c2c2c", linewidth=1.5
                 )
-            if row == 0:
-                ax_diff.legend(fontsize=7, loc="upper right")
+                ax_diff.set_xlabel("Timepoint")
+                if row == 0:
+                    ax_diff.set_title(
+                        "Differential\n(max - min across classes)", fontsize=9
+                    )
+                else:
+                    ax_diff.set_title("Differential", fontsize=9)
+                ax_diff.set_ylabel("Delta act. rate", fontsize=8)
+
+                # Also overlay per-class lines lightly for reference
+                for cls_idx, cls in enumerate(classes):
+                    ax_diff.plot(
+                        range(n_timepoints),
+                        class_act_rates[cls_idx],
+                        color=class_colors[cls_idx],
+                        linewidth=1.5,
+                        alpha=0.3,
+                        label=f"Class {cls}" if row == 0 else None,
+                    )
+                if row == 0:
+                    ax_diff.legend(fontsize=7, loc="upper right")
 
         plt.tight_layout()
         return fig
+
 
     def plot_temporal_importance(
         self,
