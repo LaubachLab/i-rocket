@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interp-rocket"
-version = "0.5.0"
+version = "0.6.0"
 description = "Interpretable ROCKET for time series classification"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
@@ -15,10 +15,11 @@ authors = [
 keywords = [
     "time series",
     "classification",
-    "regression",
-    "interpretability",
     "convolutional kernels",
     "ROCKET",
+    "interpretability",
+    "LFP",
+    "EEG",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

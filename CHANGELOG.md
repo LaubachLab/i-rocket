@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6 (2026-04-15)
+
+**LFP extensions.** A new `lfp_tools` module in `extensions/` provides functions for spectral analysis of event-aligned local field potential recordings. The module wraps tensorpac (Combrisson et al. 2020) and a Python port of EEGLAB's eegfilt.m, providing power spectral density, event-related spectral perturbation with z-score normalization, pairwise phase consistency (Vinck et al. 2010), and phase-amplitude coupling analysis. A companion demo notebook applies the full I-ROCKET workflow to LFP recordings from Amarante, Caetano, & Laubach (2017), demonstrating cross-validation, feature stability analysis, top kernel properties, temporal importance, receptive field mapping, single-kernel activation extraction, and validation of kernel selectivity through PSD, ERSP/PPC, and PAC by trial type.
+
+**interp_rocket.** `plot_top_kernels` now defaults to `show_difference=False` and accepts a `colors` keyword argument for user-specified class colors.
+
+**Revised demos.** `demo_waveform` was rewritten with `FIG_WIDTH=8` throughout, temporal occlusion and pre-FSA cells removed, and a "two complementary views" framing (temporal importance and receptive field mapping). `demo_gunpoint`, `demo_fordb`, and `demo_three_bumps` were streamlined to reduce complexity based on user feedback.
+
+**Documentation.** Clarified that `max_dilations_per_kernel` is a ceiling, not a target. The actual dilation count is limited by signal length via `floor((L-1)/(k-1))`. The v0.5 reduction from 32 to 16 only affects signals long enough to support more than 16 valid dilations. Temporal occlusion is retained in the package but removed from the waveform and GunPoint demos.
+
 ## v0.5 (2026-03-27)
 
 - All demonstration notebooks in `examples/` and `extensions/` have been finalized and posted.

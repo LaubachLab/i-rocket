@@ -93,6 +93,8 @@ i-rocket/
 |-- README.md
 |-- examples/
 |   |-- demo_waveform.ipynb                 # Full tutorial with waveform-5000
+|   |-- demo_LFP.ipynb                      # Application of I-ROCKET to an LFP dataset
+|   |-- LFP_Amarante_2017.npz               # LFP dataset from PMID: 28978665
 |   |-- demo_GunPoint.ipynb                 # Real-world motion sensor data (UCR GunPoint)
 |   |-- demo_FordB.ipynb                    # Real-world engine noise (UCR FordB)
 |   |-- demo_three_bumps.ipynb              # Synthetic data used for package development
@@ -102,6 +104,9 @@ i-rocket/
 |   |-- benchmark_waveform.py               # I-ROCKET vs aeon MultiRocket on waveform
 |   +-- benchmark_ucr.py                    # I-ROCKET vs aeon MultiRocket across 15 UCR datasets
 |-- extensions/
+|   |-- extract_activations.py              # Extract pre-pooling activation time series from I-ROCKET
+|   |-- lfp_tools.py                        # Functions for PSD, ERSP, PPC, PAC
+|   |-- lfp_tools_emd.py                    # Functions for EMD-based PSD)
 |   |-- kernel_explorer.py                  # Interactive kernel/dilation/pooling explorer
 |   |-- amee_evaluation.py                  # AMEE explanation evaluation framework
 |   |-- tshap_integration.py                # TSHAP bridge for Shapley value attributions
@@ -309,6 +314,14 @@ Features classified as **redundant** carry information already available from ot
 
 The `extensions/` directory contains optional modules that integrate I-ROCKET with related tools and methods from the time series classification literature. These modules have no effect on the core package and are not required for basic use.
 
+### LFP Extensions
+
+The `extensions/` directory contains `lfp_tools`, a module for spectral analysis of event-aligned local field potential recordings. It depends on the [tensorpac](https://etiennecmb.github.io/tensorpac/) package. A patched version of tensorpac, updating for some recent changes in numpy, is available at: https://github.com/LaubachLab/tensorpac.
+
+The `extensions/` directory contains `lfp_tools_emd`, a module for spectral analysis using Empirical Mode Decomposition. It depends on the EMD package: https://gitlab.com/emd-dev/emd
+
+The companion notebook `demo_LFP.ipynb` applies I-ROCKET to LFP data from Amarante, Caetano, & Laubach (2017, *Journal of Neuroscience*). The demo covers the full interpretability workflow: raw LFP visualization, PSD and ERSP/PPC by trial type, PAC analysis, cross-validation with I-ROCKET, feature stability analysis, top kernel properties, temporal importance and receptive field maps, extraction of activations for the top kernel, and validation of kernel selectivity by comparing the raw signal, PSD, ERSP/PPC, and PAC for the top kernel against the original broadband results. Event-aligned LFP data from one session (RED02) are included in `extensions/data/`.
+
 ### Kernel Explorer
 
 A stand-alone Python program (`extensions/kernel_explorer.py`) for understanding the building blocks of MultiRocket classifiers: the 84 fixed convolutional kernels, dilation, bias thresholding, and the four pooling operators.
@@ -436,6 +449,8 @@ All plotting methods accept an optional `feature_mask` parameter to restrict ana
 
 **`InterpRocket(max_dilations_per_kernel=32, num_features=10000, random_state=0, alpha_range=None, class_weight=None)`**
 
+**Note on `max_dilations_per_kernel`.** This parameter sets an upper bound, not a fixed count, on the number of dilations. The actual number of dilations per kernel is limited by signal length: `floor((L-1)/(k-1))` determines the maximum valid dilation. For short signals (e.g., Waveform with L=21), only 2-3 dilations may be possible regardless of the setting. The default of 16 was chosen in v0.5 to improve temporal localization on longer signals without affecting short-signal behavior.
+
 **`InterpRocketRegressor(max_dilations_per_kernel=32, num_features=10000, random_state=0, alpha_range=None)`** *(in interp_rocket_regressor.py)*
 
 ### Methods (both classes)
@@ -483,25 +498,31 @@ All plotting methods accept an optional `feature_mask` parameter to restrict ana
 ## References
 
 - Altmann, A., Tolosi, L., Sander, O., & Lengauer, T. (2010). Permutation importance: a corrected feature importance measure. *Bioinformatics*, 26(10), 1340-1347.
+- Amarante, L. M., Caetano, M. S., & Laubach, M. (2017). Medial Frontal Theta Is Entrained to Rewarded Actions. *The Journal of Neuroscience*, 37(44), 10757–10769. https://doi.org/10.1523/JNEUROSCI.1965-17.2017
+- Combrisson, E., Nest, T., Brovelli, A., Ince, R. A., Soto, J. L., Guillot,A., & Jerbi, K. (2020). Tensorpac: An open-source Python toolbox for tensor-based phase-amplitude coupling measurement in electrophysiological brain signals. *PLoS computational biology*, 16(10), e1008302.
 - Dempster, A., Petitjean, F., & Webb, G. I. (2020). ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels. *Data Mining and Knowledge Discovery*, 34(5), 1454-1495.
 - Dempster, A., Schmidt, D. F., & Webb, G. I. (2021). MiniRocket: A very fast (almost) deterministic transform for time series classification. *Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery and Data Mining*, 248-257.
 - Dhariyal, B., Le Nguyen, T., & Ifrim, G. (2023). Scalable classifier-agnostic channel selection for multivariate time series classification. *Data Mining and Knowledge Discovery*, 37, 1010-1054.
+- Delorme, A., Makeig, S. (2004) EEGLAB: an open source toolbox for analysis of single-trial EEG dynamics including independent component analysis. *Journal of Neuroscience Methods*, 134(1), 9-21.
 - Guyon, I., Weston, J., Barnhill, S., & Vapnik, V. (2002). Gene selection for cancer classification using support vector machines. *Machine Learning*, 46(1), 389-422.
 - Le Nguyen, T. & Ifrim, G. (2025). TSHAP: Fast and exact SHAP for explaining time series classification and regression. *ECML-PKDD 2025*.
 - Lundberg, S. M. & Lee, S.-I. (2017). A unified approach to interpreting model predictions. *Advances in Neural Information Processing Systems*, 30.
 - Lundy, C., & O'Toole, J. M. (2021). Random convolution kernels with multi-scale decomposition for preterm EEG inter-burst detection. *2021 29th European Signal Processing Conference (EUSIPCO)*, 1182-1186.
 - Meinshausen, N. & Buhlmann, P. (2010). Stability selection. *Journal of the Royal Statistical Society: Series B*, 72(4), 417-473.
+- Middlehurst, M., Ismail-Fawaz, A., Guillaume, A., Holder, C., Guijo-Rubio, D., Bulatova, G., Tsaprounis, L., Mentel, L., Walter, M., Schäfer, P. and Bagnall, A., 2024. aeon: a Python toolkit for learning from time series. *Journal of Machine Learning Research*, 25(289), pp. 1-10.
 - Narayanan, N. S., Kimchi, E. Y., & Laubach, M. (2005). Redundancy and synergy of neuronal ensembles in motor cortex. *Journal of Neuroscience*, 25(17), 4207-4216.
 - Nguyen, T. T., Nguyen, T. L., & Ifrim, G. (2024). Robust explainer recommendation for time series classification. *Data Mining and Knowledge Discovery*, 38, 3372-3413.
 - O'Toole, J. M. (2023). ms_rocket: Multi-scale ROCKET for time series classification. GitHub repository. https://github.com/otoolej/ms_rocket
+- Quinn, A. J., Lopes-dos-Santos, V., Dupret, D., Nobre, A. C., & Woolrich, M. W. (2021). EMD: Empirical Mode Decomposition and Hilbert-Huang Spectral Analyses in Python. *Journal of Open Source Software*, 6(59), 2977.
 - Saeys, Y., Abeel, T., & Van de Peer, Y. (2008). Robust feature selection using ensemble feature selection techniques. *Proc. ECML PKDD*, 313-325.
 - Satopaa, V., Albrecht, J., Irwin, D., & Raghavan, B. (2011). Finding a "Kneedle" in a Haystack: Detecting Knee Points in System Behavior. *ICDCS Workshops*.
 - Tan, C. W., Dempster, A., Bergmeir, C., & Webb, G. I. (2022). MultiRocket: Multiple pooling operators and transformations for fast and effective time series classification. *Data Mining and Knowledge Discovery*, 36(5), 1623-1646.
 - Uribarri, G., Barone, F., Ansuini, A., & Fransen, E. (2024). Detach-ROCKET: Sequential feature selection for time series classification with random convolutional kernels. *Data Mining and Knowledge Discovery*, 38, 3922-3947.
+- Vinck, M., van Wingerden, M., Womelsdorf, T., Fries, P., & Pennartz, C.M.A. (2010). The pairwise phase consistency: A bias-free measure of rhythmic neuronal synchronization. *NeuroImage*, 51(1), 112-122.
 
 ## Author
 
-Mark Laubach (American University, Department of Neuroscience). Developed with Claude (Anthropic) as AI coding assistant.
+Mark Laubach (American University, Department of Neuroscience). Developed with Claude (Anthropic) and Gemini (Google) as AI coding assistants.
 
 ## License
 
