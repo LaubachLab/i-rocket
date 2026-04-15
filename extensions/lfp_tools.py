@@ -8,15 +8,14 @@ The hilbert_tfa code is a Python port of the HilbertEEG toolbox by
 Kimberly Stachenfeld (2012), developed as a senior thesis project in
 the Laubach Lab at American University.
 
-Depends on functions from the tensorpac package and eegfilt.py (Python
-port of EEGLAB's eegfilt.m).
+A Python port of EEGLAB's eegfilt.m is included (Delorme and Makeig, 2004).
 
 Code for Pairwise Phase Consistency (PPC) is based on Vinck et al. (2010).
 
 This module depends on functions from the `tensorpac` package. We recommend
 installing the package from this fork: https://github.com/LaubachLab/tensorpac
 It applied three compatibility patches to utils.py for Python 3.12 / NumPy
-≥1.22 / Matplotlib ≥3.8. Install the package as follows:
+>=1.22 / Matplotlib >=3.8. Install the package as follows:
 pip install git+https://github.com/LaubachLab/tensorpac.git
 
 License: BSD 2-Clause
@@ -28,6 +27,10 @@ Combrisson, E., Nest, T., Brovelli, A., Ince, R. A., Soto, J. L., Guillot,
     tensor-based phase-amplitude coupling measurement in electrophysiological
     brain signals. PLoS computational biology, 16(10), e1008302.
 
+Delorme, A., Makeig, S. (2004) EEGLAB: an open source toolbox for analysis
+    of single-trial EEG dynamics including independent component analysis.
+    Journal of Neuroscience Methods, 134(1), 9-21.
+
 Stachenfeld, K. (2012). HilbertEEG: Analyze EEG or LFP data via Hilbert
     Transform. Laubach Lab, American University.
 
@@ -38,10 +41,8 @@ Vinck, M., van Wingerden, M., Womelsdorf, T., Fries, P., &
 """
 
 import numpy as np
-from scipy.signal import hilbert, firwin, filtfilt
+from scipy.signal import hilbert, firwin, filtfilt, firls, firwin, filtfilt, lfilter
 from scipy.stats import norm
-
-from eegfilt import eegfilt
 
 try:
     from numba import njit, prange
@@ -91,6 +92,195 @@ def _pbar(iterable, total=None, desc='', verbose=True):
                 return val
         return _SimplePbar(iterable, total, desc)
 
+
+# ---------------------------------------------------------------------------
+# eegfilt (Python port of EEGLab's eegfilt function)
+# ---------------------------------------------------------------------------
+
+def eegfilt(data, srate, locutoff=0.0, hicutoff=0.0, epochframes=0,
+            filtorder=0, revfilt=False, firtype='fir1', causal=False,
+            verbose=True):
+    """(High|low|band)-pass filter data using FIR filtering.
+
+    Attempt to match the behavior of EEGLAB's eegfilt.m. By default uses
+    fir1 (window method) filter design with zero-phase (filtfilt) application.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_samples,) or (n_channels, n_samples)
+        Data to filter. If 1D, treated as a single channel.
+    srate : float
+        Sampling rate in Hz.
+    locutoff : float
+        Low-edge frequency of the pass band in Hz. Set to 0 for lowpass only.
+    hicutoff : float
+        High-edge frequency of the pass band in Hz. Set to 0 for highpass only.
+    epochframes : int
+        Frames per epoch. Each epoch is filtered separately. Default 0 means
+        the entire signal is one epoch.
+    filtorder : int
+        Filter order (length in points). Default 0 uses the EEGLAB heuristic:
+        3 * fix(srate / locutoff) for highpass/bandpass, or
+        3 * fix(srate / hicutoff) for lowpass, with a minimum of 15.
+    revfilt : bool
+        If True, reverse the filter (bandpass becomes notch, etc.). Only
+        supported with firtype='firls'. Default False.
+    firtype : str
+        Filter design method: 'fir1' (window method, recommended) or 'firls'
+        (least-squares). Default is 'fir1'.
+    causal : bool
+        If True, use causal (one-pass) filtering. Default False (zero-phase).
+    verbose : bool
+        Print filter information. Default True.
+
+    Returns
+    -------
+    smoothdata : ndarray, same shape as data
+        Filtered data.
+    filtwts : ndarray
+        FIR filter coefficients.
+    """
+    # Handle 1D input
+    squeeze_output = False
+    if data.ndim == 1:
+        data = data[np.newaxis, :]
+        squeeze_output = True
+
+    chans, frames = data.shape
+    nyq = srate * 0.5
+
+    minfac = 3
+    min_filtorder = 15
+    trans = 0.15  # fractional width of transition zones
+
+    # --- Input validation ---
+    if locutoff > 0 and hicutoff > 0 and locutoff > hicutoff:
+        raise ValueError("locutoff > hicutoff")
+    if locutoff < 0 or hicutoff < 0:
+        raise ValueError("locutoff and hicutoff must be >= 0")
+    if locutoff > nyq:
+        raise ValueError("Low cutoff frequency cannot be > srate/2")
+    if hicutoff > nyq:
+        raise ValueError("High cutoff frequency cannot be > srate/2")
+    if locutoff == 0 and hicutoff == 0:
+        raise ValueError("You must provide a non-zero low or high cutoff frequency")
+
+    # --- Determine filter order ---
+    if filtorder == 0:
+        if locutoff > 0:
+            filtorder = minfac * int(srate / locutoff)
+        elif hicutoff > 0:
+            filtorder = minfac * int(srate / hicutoff)
+        filtorder = max(filtorder, min_filtorder)
+
+    # --- Epoch handling ---
+    if epochframes == 0:
+        epochframes = frames
+    epochs = frames // epochframes
+    if epochs * epochframes != frames:
+        raise ValueError("epochframes does not evenly divide the number of frames")
+    if filtorder * 3 > epochframes:
+        raise ValueError(
+            f"Filter order ({filtorder}) is too large for epoch length "
+            f"({epochframes}). epochframes must be >= 3 * filtorder."
+        )
+
+    # --- Design filter ---
+    if locutoff > 0 and hicutoff > 0:
+        # Bandpass (or notch if revfilt)
+        if (1 + trans) * hicutoff / nyq > 1:
+            raise ValueError("High cutoff frequency too close to Nyquist frequency")
+
+        filter_desc = "notch" if revfilt else "bandpass"
+        if verbose:
+            print(f"eegfilt() - performing {filtorder}-point {filter_desc} filtering.")
+
+        if firtype == 'firls':
+            f = [0,
+                 (1 - trans) * locutoff / nyq,
+                 locutoff / nyq,
+                 hicutoff / nyq,
+                 (1 + trans) * hicutoff / nyq,
+                 1.0]
+            m = [0, 0, 1, 1, 0, 0]
+            if revfilt:
+                m = [1 - x for x in m]
+            if verbose:
+                lo_trans = (f[2] - f[1]) * nyq
+                hi_trans = (f[4] - f[3]) * nyq
+                print(f"  Low transition band width: {lo_trans:.1f} Hz; "
+                      f"high transition band width: {hi_trans:.1f} Hz")
+            filtwts = firls(filtorder, f, m)
+        else:
+            if revfilt:
+                raise ValueError("Cannot reverse filter using 'fir1' option")
+            # firwin bandpass needs odd number of taps (even filtorder)
+            fo = filtorder if filtorder % 2 == 0 else filtorder + 1
+            filtwts = firwin(fo + 1, [locutoff, hicutoff],
+                             pass_zero=False, fs=srate)
+
+    elif locutoff > 0:
+        # Highpass
+        if verbose:
+            print(f"eegfilt() - performing {filtorder}-point highpass filtering.")
+
+        if firtype == 'firls':
+            f = [0,
+                 locutoff * (1 - trans) / nyq,
+                 locutoff / nyq,
+                 1.0]
+            m = [0, 0, 1, 1]
+            if revfilt:
+                m = [1 - x for x in m]
+            if verbose:
+                hp_trans = (f[2] - f[1]) * nyq
+                print(f"  Highpass transition band width: {hp_trans:.1f} Hz")
+            filtwts = firls(filtorder, f, m)
+        else:
+            if revfilt:
+                raise ValueError("Cannot reverse filter using 'fir1' option")
+            # firwin highpass needs odd number of taps (even filtorder)
+            fo = filtorder if filtorder % 2 == 0 else filtorder + 1
+            filtwts = firwin(fo + 1, locutoff, pass_zero=False, fs=srate)
+
+    else:
+        # Lowpass
+        if verbose:
+            print(f"eegfilt() - performing {filtorder}-point lowpass filtering.")
+
+        if firtype == 'firls':
+            f = [0,
+                 hicutoff / nyq,
+                 hicutoff * (1 + trans) / nyq,
+                 1.0]
+            m = [1, 1, 0, 0]
+            if revfilt:
+                m = [1 - x for x in m]
+            if verbose:
+                lp_trans = (f[2] - f[1]) * nyq
+                print(f"  Lowpass transition band width: {lp_trans:.1f} Hz")
+            filtwts = firls(filtorder, f, m)
+        else:
+            if revfilt:
+                raise ValueError("Cannot reverse filter using 'fir1' option")
+            filtwts = firwin(filtorder + 1, hicutoff, pass_zero=True, fs=srate)
+
+    # --- Apply filter ---
+    smoothdata = np.zeros_like(data, dtype=float)
+    for e in range(epochs):
+        start = e * epochframes
+        stop = (e + 1) * epochframes
+        for c in range(chans):
+            segment = data[c, start:stop].astype(float)
+            if causal:
+                smoothdata[c, start:stop] = lfilter(filtwts, 1.0, segment)
+            else:
+                smoothdata[c, start:stop] = filtfilt(filtwts, 1.0, segment)
+
+    if squeeze_output:
+        smoothdata = smoothdata[0]
+
+    return smoothdata, filtwts
 
 # ---------------------------------------------------------------------------
 # Trial matching
@@ -290,7 +480,8 @@ def matched_tfa(hi_reps, lo_reps, srate, freq_range, freq_int,
 # ---------------------------------------------------------------------------
 
 def hilbert_tfa(data, srate, freq_range, freq_int, bootstrap=True,
-                naccu=200, n_timebins=None, timebin_size=None, verbose=True):
+                naccu=200, n_timebins=None, timebin_size=None,
+                edge_frac=8, verbose=True):
     """Hilbert transform-based time-frequency analysis.
 
     Bandpass filters data at successive frequency intervals, applies the
@@ -313,6 +504,10 @@ def hilbert_tfa(data, srate, freq_range, freq_int, bootstrap=True,
         Run bootstrap significance analysis. Default True.
     naccu : int
         Number of bootstrap accumulations. Default 200.
+    edge_frac : int
+        Denominator for edge trimming: edge_frames = min(max_filtorder,
+        frames // edge_frac). Default 8. Set to 4 for aggressive trimming
+        or higher values (e.g. 12) to preserve more of the time series.
     verbose : bool
         Print progress. Default True.
 
@@ -396,9 +591,9 @@ def hilbert_tfa(data, srate, freq_range, freq_int, bootstrap=True,
 
     freq_centers = (freqs[:-1] + freqs[1:]) / 2.0
 
-    # Edge trim: longest filter order used
+    # Edge trim: longest filter order used, capped by edge_frac
     max_filtorder = 3 * int(srate / freq_range[0])
-    edge_frames = min(max_filtorder, frames // 4)
+    edge_frames = min(max_filtorder, frames // edge_frac)
 
     results = {
         'ITC': itc,
