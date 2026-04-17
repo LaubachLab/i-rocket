@@ -133,7 +133,7 @@ Author: Mark Laubach (American University, Department of Neuroscience)
 License: BSD-3-Clause
 """
 
-__version__ = "0.3.0"
+__version__ = "0.6.1"
 
 import numpy as np
 from itertools import combinations
