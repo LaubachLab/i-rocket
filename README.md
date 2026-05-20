@@ -6,7 +6,7 @@
 
 **Interpretable ROCKET: An Analysis Framework for Convolutional Time Series Classification**
 
-I-ROCKET is a standalone Python package. It implements the MultiRocket algorithm (Tan et al., 2022). The package provides a complete interpretability and analysis framework. It includes kernel-level feature decoding, feature selection, temporal activation mapping, and temporal occlusion mapping. It also provides information-theoretic decomposition, cross-validation stability analysis, confusion-conditioned diagnostics, and receptive field visualization. A companion module handles time series regression. It uses the exact same interpretable transform. The transparent parameter storage in ms_rocket (O'Toole, 2023) inspired this design. I-ROCKET generates kernels, convolves the training data, extracts pooled features, and trains a linear classifier. It exposes every intermediate parameter for inspection.
+I-ROCKET is a standalone Python package. It implements the MultiRocket algorithm (Tan et al., 2022). The package provides a complete interpretability and analysis framework. It includes kernel-level feature decoding, feature selection, temporal activation mapping, and temporal occlusion mapping. It also provides information-theoretic decomposition, cross-validation stability analysis, confusion-conditioned diagnostics, and receptive field visualization. A companion module handles time series regression. It uses the exact same interpretable transform. The transparent parameter storage in X-ROCKET (Brunner, 2024) inspired this design. I-ROCKET generates kernels, convolves the training data, extracts pooled features, and trains a linear classifier. It exposes every intermediate parameter for inspection.
 
 ## Motivation
 
@@ -499,6 +499,7 @@ All plotting methods accept an optional `feature_mask` parameter to restrict ana
 
 - Altmann, A., Tolosi, L., Sander, O., & Lengauer, T. (2010). Permutation importance: a corrected feature importance measure. *Bioinformatics*, 26(10), 1340-1347.
 - Amarante, L. M., Caetano, M. S., & Laubach, M. (2017). Medial Frontal Theta Is Entrained to Rewarded Actions. *The Journal of Neuroscience*, 37(44), 10757–10769. https://doi.org/10.1523/JNEUROSCI.1965-17.2017
+- Brunner, F. (2024). Explainable time series classification with X-ROCKET. https://dida.do/blog/explainable-time-series-classification-with-x-rocket Code: https://github.com/dida-do/xrocket
 - Combrisson, E., Nest, T., Brovelli, A., Ince, R. A., Soto, J. L., Guillot,A., & Jerbi, K. (2020). Tensorpac: An open-source Python toolbox for tensor-based phase-amplitude coupling measurement in electrophysiological brain signals. *PLoS computational biology*, 16(10), e1008302.
 - Dempster, A., Petitjean, F., & Webb, G. I. (2020). ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels. *Data Mining and Knowledge Discovery*, 34(5), 1454-1495.
 - Dempster, A., Schmidt, D. F., & Webb, G. I. (2021). MiniRocket: A very fast (almost) deterministic transform for time series classification. *Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery and Data Mining*, 248-257.
