@@ -1,0 +1,11 @@
+include README.md
+include PIPELINE_DESIGN.md
+include RELEASE_NOTES_260724.md
+include THIRD_PARTY.md
+include CHANGELOG.md
+include CITATION.cff
+recursive-include tools *.py *.md
+recursive-include benchmarks *.py *.md
+prune examples
+
+include VALIDATION_260724.md

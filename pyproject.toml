@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interp-rocket"
-version = "0.6.0"
-description = "Interpretable ROCKET for time series classification"
+version = "0.7.0"
+description = "Interpretable MultiRocket with stable feature selection and leakage-free validation"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
 requires-python = ">=3.9"
@@ -18,8 +18,10 @@ keywords = [
     "convolutional kernels",
     "ROCKET",
     "interpretability",
-    "LFP",
-    "EEG",
+    "feature selection",
+    "nested cross-validation",
+    "feature stability",
+    "time-series explainability",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,11 +35,30 @@ dependencies = [
     "numba>=0.50",
     "scikit-learn>=1.0",
     "matplotlib>=3.5",
+    "scipy>=1.8",
+    "tqdm>=4.64",
+]
+
+[project.optional-dependencies]
+datasets = [
+    "aeon>=1.0",
+    "openml>=0.14",
+]
+tshap = [
+    "tshap==0.0.1",
+]
+notebooks = [
+    "jupyterlab>=4",
+]
+test = [
+    "pytest>=7",
 ]
 
 [project.urls]
 Homepage = "https://github.com/LaubachLab/i-rocket"
 Repository = "https://github.com/LaubachLab/i-rocket"
+Issues = "https://github.com/LaubachLab/i-rocket/issues"
 
 [tool.setuptools]
-py-modules = ["interp_rocket", "interp_rocket_regressor", "three_bumps"]
+py-modules = ["feature_selection", "interp_rocket", "interpretability", "irocket_model_selection", "model_selection", "stability_nogueira", "spectral", "tshap_integration"]
+packages = ["_irocket_selection"]

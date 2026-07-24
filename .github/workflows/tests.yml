@@ -1,12 +1,71 @@
 name: tests
+
 on: [push, pull_request]
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+    env:
+      NUMBA_DISABLE_JIT: "1"
+      NUMBA_THREADING_LAYER: "workqueue"
+      NUMBA_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install -e . pytest
-      - run: pytest test_interp_rocket.py -v
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[test]"
+      - run: pytest -q
+
+  wheel:
+    runs-on: ubuntu-latest
+    env:
+      NUMBA_DISABLE_JIT: "1"
+      NUMBA_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip wheel . --no-deps --wheel-dir wheelhouse
+      - run: python -m pip install --no-deps wheelhouse/*.whl
+      - name: Installed-wheel smoke test
+        working-directory: /tmp
+        run: |
+          python - <<'PY'
+          import numpy as np
+          from interp_rocket import InterpRocketTransform
+          from feature_selection import ResampledShrinkageSelector
+          from spectral import power_spectrum
+
+          rng = np.random.default_rng(42)
+          X = rng.normal(size=(20, 40)).astype(np.float32)
+          y = np.repeat([0, 1], 10)
+          Z = InterpRocketTransform(
+              num_features=168,
+              max_dilations_per_kernel=4,
+              random_state=42,
+          ).fit_transform(X)
+          selected = ResampledShrinkageSelector(
+              n_resamples=4,
+              cutoff_min_size=3,
+              random_state=42,
+          ).fit_transform(Z, y)
+          spectrum = power_spectrum(X[0], method="periodogram")
+          assert Z.shape[0] == X.shape[0]
+          assert selected.shape[0] == X.shape[0]
+          assert spectrum.power.size == spectrum.frequencies.size
+          print("installed wheel OK", Z.shape, selected.shape)
+          PY
