@@ -1,5 +1,9 @@
 # I-ROCKET
 
+[![License: BSD-3](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+[![tests](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml/badge.svg)](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19055359.svg)](https://doi.org/10.5281/zenodo.19055359)
+
 I-ROCKET is a transparent implementation of the univariate MultiRocket transform for interpretable time-series classification. Every transformed column can be decoded to its generating kernel, dilation, padding mode, bias threshold, pooling operator, and signal representation. The pipeline is:
 
 ```text
