@@ -4,10 +4,14 @@
 [![tests](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml/badge.svg)](https://github.com/LaubachLab/i-rocket/actions/workflows/tests.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19055359.svg)](https://doi.org/10.5281/zenodo.19055359)
 
-I-ROCKET is a transparent implementation of the univariate MultiRocket transform for interpretable time-series classification. Every transformed column can be decoded to its generating kernel, dilation, padding mode, bias threshold, pooling operator, and signal representation. The pipeline is:
+I-ROCKET is a transparent implementation of the univariate MultiRocket transform designed specifically for interpretable time-series classification. While standard ROCKET models excel at fast and accurate classification, their high-dimensional outputs often act as a black box. I-ROCKET resolves this by ensuring every transformed column can be decoded directly to its generating kernel, dilation, padding mode, bias threshold, and pooling operator.
+
+To achieve stable, interpretable results without data leakage, the package integrates shrinkage-*t* feature selection and Nogueira stability measures within a strict nested cross-validation framework. This enables the accurate estimation of generalization performance while identifying the precise temporal features driving the model's decisions.
+
+The complete I-ROCKET workflow consists of:
 
 ```text
-training-partition MultiRocket transform
+MultiRocket transform (training data only)
     -> shrinkage-t ranking within repeated subsamples
     -> one-break segmented cutoff in each subsample
     -> consensus selection probabilities
