@@ -1,5 +1,16 @@
 # Changelog
 
+## 260808 — interpretability and reporting update
+
+- Added trial-by-time selected-feature activation matrices and heatmaps with
+  exact pooled values and LSPV run summaries.
+- Added DataFrame reporting and graphics for local, non-local, and
+  subthreshold selected features using the excess-over-baseline localization
+  criterion.
+- Added cleaned aggregate and per-outer-fold tables to `NestedCVResult`.
+- Updated plotting defaults for activation-map size, localized kernel patterns,
+  unlabeled event lines, and Okabe-Ito representation colors.
+
 ## 260724 — package version 0.7.0
 
 - Updated the univariate MultiRocket transform to preserve its requested
