@@ -1222,7 +1222,7 @@ class InterpRocketTransform(TransformerMixin, BaseEstimator):
             name for name in ("raw", "diff") if name in representations
         ]
         rep_counts = [representations.count(name) for name in rep_names]
-        rep_colors = {"raw": OI[0], "diff": OI[3]}
+        rep_colors = {"raw": OI[0], "diff": OI[5]}
         axes[1, 0].bar(
             rep_names,
             rep_counts,
