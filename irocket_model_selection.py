@@ -58,6 +58,18 @@ from interp_rocket import InterpRocket, InterpRocketTransform, _validate_feature
 from _irocket_selection import ResampledShrinkageSelector
 
 
+def _require_pandas():
+    """Import pandas for result-reporting helpers."""
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise ImportError(
+            "I-ROCKET result tables require pandas. Install pandas or install "
+            "I-ROCKET with its notebook dependencies."
+        ) from exc
+    return pd
+
+
 # ---------------------------------------------------------------------------
 # Result containers
 # ---------------------------------------------------------------------------
@@ -188,6 +200,112 @@ class NestedCVResult:
             if self.best_parameters is None
             else dict(self.best_parameters),
         }
+
+    def summary_tables(self):
+        """Return aggregate classification metrics and metadata tables.
+
+        Returns
+        -------
+        metrics : pandas.DataFrame
+            Rows are classification metrics and columns are ``Mean``, ``Std``,
+            and ``Pooled`` across the untouched outer folds.
+        metadata : pandas.Series
+            Remaining nested-validation metadata. ``outer_score_mean`` and
+            ``outer_score_std`` are omitted because they duplicate the primary
+            score already present in the classification-metrics table.
+
+        Notes
+        -----
+        The pooled values are calculated from all outer-fold predictions. The
+        final interpretation model is not evaluated on its training data here.
+        """
+        pd = _require_pandas()
+        summary = self.summary()
+        metrics = pd.DataFrame(
+            {
+                "Mean": summary["mean_metrics"],
+                "Std": summary["std_metrics"],
+                "Pooled": summary["pooled_metrics"],
+            }
+        )
+        metadata = {
+            key: value
+            for key, value in summary.items()
+            if not key.endswith("_metrics")
+        }
+        metadata_series = pd.Series(metadata, name="Value").drop(
+            ["outer_score_mean", "outer_score_std"],
+            errors="ignore",
+        )
+        return metrics, metadata_series
+
+    def outer_fold_table(self):
+        """Return one row per untouched outer-test fold.
+
+        The table combines fold-specific classification metrics with the
+        selected consensus threshold, ridge alpha, feature count, and Nogueira
+        stability. Fold numbers are reported as one-based values for display;
+        ``fold_index`` preserves the stored zero-based index.
+        """
+        pd = _require_pandas()
+        rows = []
+        for result in self.outer_fold_results:
+            row = {
+                "fold": int(result.fold_index) + 1,
+                "fold_index": int(result.fold_index),
+                "n_train": int(len(result.train_indices)),
+                "n_test": int(len(result.test_indices)),
+                "consensus_threshold": float(
+                    result.best_consensus_threshold
+                ),
+                "alpha": float(result.best_alpha),
+                "n_transform_features": int(result.n_transform_features),
+                "n_selected_features": int(result.n_selected_features),
+                "nogueira_stability": float(result.nogueira_stability),
+                "primary_score": float(result.primary_score),
+            }
+            row.update(
+                {
+                    str(name): float(value)
+                    for name, value in result.metrics.items()
+                }
+            )
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    def print_summary(self, digits=4, *, include_outer_folds=False):
+        """Print cleaned aggregate results and optionally the fold table.
+
+        Parameters
+        ----------
+        digits : int, default=4
+            Number of decimal places used for the metrics display.
+        include_outer_folds : bool, default=False
+            Print the one-row-per-fold table after the aggregate summary.
+
+        Returns
+        -------
+        metrics, metadata : tuple
+            The same objects returned by :meth:`summary_tables`.
+        """
+        if isinstance(digits, (bool, np.bool_)) or not isinstance(
+            digits, (int, np.integer)
+        ):
+            raise TypeError("digits must be an integer.")
+        if int(digits) < 0:
+            raise ValueError("digits must be nonnegative.")
+        if not isinstance(include_outer_folds, (bool, np.bool_)):
+            raise TypeError("include_outer_folds must be a boolean.")
+
+        metrics, metadata = self.summary_tables()
+        print("--- CLASSIFICATION METRICS ---")
+        print(metrics.round(int(digits)))
+        print("\n--- METADATA ---")
+        print(metadata)
+        if include_outer_folds:
+            print("\n--- OUTER FOLDS ---")
+            print(self.outer_fold_table().round(int(digits)))
+        return metrics, metadata
 
 
 # ---------------------------------------------------------------------------
