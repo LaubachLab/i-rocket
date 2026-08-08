@@ -26,12 +26,13 @@ For the rationale behind the pipeline—including why I-ROCKET uses shrinkage-*t
 
 ## Release
 
-**GitHub release/tag:** `260724`  
-**Python package version:** `0.7.0`
+**GitHub release/tag:** `260808`
+**Python package version:** `0.7.1`
+**Release date:** `2026-08-08`
 
-Release 260724 includes an updated MultiRocket core, internal shrinkage-*t* filtering, segmented cutoff estimation, resampled consensus selection, the Nogueira stability measure, leakage-free nested validation, focused kernel-interpretation tools, generic spectral helpers, optional TSHAP integration, and two standalone conceptual explorers.
+Release 260808 adds interpretability and reporting updates to the 260724 baseline. The package now declares pandas as a runtime dependency for result tables and reporting helpers.
 
-See [`RELEASE_NOTES_260724.md`](RELEASE_NOTES_260724.md) for the release summary, [`VALIDATION_260724.md`](VALIDATION_260724.md) for the validation record, and [`THIRD_PARTY.md`](THIRD_PARTY.md) for optional external integrations.
+See [`CHANGELOG.md`](CHANGELOG.md) for the 0.7.1 changes. The original release summary and validation record remain in [`RELEASE_NOTES_260724.md`](RELEASE_NOTES_260724.md) and [`VALIDATION_260724.md`](VALIDATION_260724.md); see [`THIRD_PARTY.md`](THIRD_PARTY.md) for optional external integrations.
 
 ## Installation
 
