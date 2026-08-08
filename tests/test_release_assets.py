@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+from datetime import date
 import inspect
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -49,22 +51,59 @@ def test_conceptual_tools_run_from_source_checkout():
     assert "self-test passed" in completed.stdout
 
 
+def _metadata_value(pattern, text, label):
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    assert match is not None, f"Could not find {label}."
+    return match.group(1).strip()
+
+
 def test_release_metadata_and_optional_modules():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert 'version = "0.7.0"' in pyproject
-    assert "version: 0.7.0" in citation
-    assert 'date-released: "2026-07-24"' in citation
+    project_version = _metadata_value(
+        r'^version\s*=\s*"([^"]+)"\s*$',
+        pyproject,
+        "project version",
+    )
+    citation_version = _metadata_value(
+        r'^version:\s*"?([^"\n]+)"?\s*$',
+        citation,
+        "citation version",
+    )
+    citation_date = _metadata_value(
+        r'^date-released:\s*"?([^"\n]+)"?\s*$',
+        citation,
+        "citation release date",
+    )
+    readme_tag = _metadata_value(
+        r'^\*\*GitHub release/tag:\*\*\s*`([^`]+)`\s*$',
+        readme,
+        "README release tag",
+    )
+    readme_version = _metadata_value(
+        r'^\*\*Python package version:\*\*\s*`([^`]+)`\s*$',
+        readme,
+        "README package version",
+    )
+    readme_date = _metadata_value(
+        r'^\*\*Release date:\*\*\s*`([^`]+)`\s*$',
+        readme,
+        "README release date",
+    )
+
+    assert project_version == citation_version == readme_version
+    assert readme_tag
+    assert citation_date == readme_date
+    assert date.fromisoformat(readme_date).isoformat() == readme_date
     assert '"spectral"' in pyproject
     assert '"tshap_integration"' in pyproject
     assert '"tqdm>=4.64"' in pyproject
+    assert '"pandas>=1.5"' in pyproject
     assert 'tshap = [' in pyproject
     assert '"tshap==0.0.1"' in pyproject
     assert 'datasets = [' in pyproject
-    assert "260724" in readme
-    assert "package version:** `0.7.0`" in readme
     assert "Claude (Anthropic), ChatGPT (OpenAI), and Gemini (Google)" in readme
 
 
